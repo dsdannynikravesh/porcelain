@@ -1,0 +1,29 @@
+{
+  "name": "gitpretty",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "A polished terminal Git client — see your changes, stage, and commit with ease.",
+  "bin": {
+    "gitpretty": "./src/index.tsx"
+  },
+  "scripts": {
+    "start": "bun run src/index.tsx",
+    "dev": "bun run src/index.tsx",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "build": "bash scripts/build.sh"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.3.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.5.11",
+    "@opentui/react": "^0.5.11",
+    "react": "^19.3.0"
+  }
+}
