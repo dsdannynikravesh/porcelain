@@ -15,7 +15,10 @@ function summarize(stderr: string): string {
   const lines = stderr
     .split(/\r\n|\r|\n/)
     .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("From ") && !l.startsWith("hint:") && !/^Rebasing \(\d+\/\d+\)$/.test(l));
+    .filter(
+      (l) =>
+        l && !l.startsWith("From ") && !l.startsWith("hint:") && !/^Rebasing \(\d+\/\d+\)$/.test(l),
+    );
   return lines.find((l) => /^(error|CONFLICT)/i.test(l)) ?? lines.at(-1) ?? "";
 }
 

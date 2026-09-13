@@ -289,8 +289,9 @@ export function useRepoModel(): RepoModel {
   const commit = useCallback(
     async (message: string, amend: boolean): Promise<CommitOutcome> => {
       if (busyRef.current) return { ok: false, message: "busy" };
-      busyRef.current = true;
-      setBusy(true);
+      const label = amend ? "Amending commit" : "Committing";
+      busyRef.current = label;
+      setBusy(label);
       try {
         const outcome = await gitCommit(message, { amend });
         setToast({
@@ -300,8 +301,8 @@ export function useRepoModel(): RepoModel {
         await refresh();
         return outcome;
       } finally {
-        busyRef.current = false;
-        setBusy(false);
+        busyRef.current = null;
+        setBusy(null);
       }
     },
     [refresh],
@@ -309,8 +310,8 @@ export function useRepoModel(): RepoModel {
 
   const push = useCallback(async (): Promise<PushOutcome> => {
     if (busyRef.current) return { ok: false, message: "busy" };
-    busyRef.current = true;
-    setBusy(true);
+    busyRef.current = "Pushing";
+    setBusy("Pushing");
     try {
       const outcome = await gitPush();
       setToast({
@@ -320,15 +321,15 @@ export function useRepoModel(): RepoModel {
       await refresh();
       return outcome;
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      busyRef.current = null;
+      setBusy(null);
     }
   }, [refresh]);
 
   const pull = useCallback(async (): Promise<PullOutcome> => {
     if (busyRef.current) return { ok: false, message: "busy" };
-    busyRef.current = true;
-    setBusy(true);
+    busyRef.current = "Pulling";
+    setBusy("Pulling");
     try {
       const outcome = await gitPull();
       setToast({
@@ -338,8 +339,8 @@ export function useRepoModel(): RepoModel {
       await refresh();
       return outcome;
     } finally {
-      busyRef.current = false;
-      setBusy(false);
+      busyRef.current = null;
+      setBusy(null);
     }
   }, [refresh]);
 

@@ -1,13 +1,16 @@
 import { BOLD, theme } from "./theme.js";
 
-const KEYS: Array<[string, string]> = [
-  ["j / k", "move"],
-  ["space", "stage file / fold dir"],
+// Third element marks a key as "essential" — always visible in the collapsed
+// footer, not just behind `?`. Keep this list short: it's the one-glance
+// cheat sheet, everything else is a keystroke away in the full overlay.
+const KEYS: Array<[string, string, boolean?]> = [
+  ["j / k", "move", true],
+  ["space", "stage file / fold dir", true],
   ["h / l", "collapse / expand dir"],
   ["a", "stage all"],
   ["A", "unstage all"],
   ["c", "commit msg"],
-  ["Ctrl+S", "commit"],
+  ["Ctrl+S", "commit", true],
   ["M", "amend"],
   ["p", "pull"],
   ["P", "push"],
@@ -18,18 +21,18 @@ const KEYS: Array<[string, string]> = [
   ["w", "wrap lines"],
   ["r", "refresh"],
   ["t", "toggle history"],
-  ["?", "help"],
-  ["q", "quit"],
+  ["?", "help", true],
+  ["q", "quit", true],
 ];
+
+const ESSENTIAL_KEYS = KEYS.filter(([, , essential]) => essential);
 
 export function HelpFooter({ expanded }: { expanded: boolean }) {
   if (!expanded) {
     return (
       <box style={{ height: 1, paddingLeft: 1, flexDirection: "row" }}>
         <text style={{ fg: theme.faint }}>
-          {KEYS.slice(0, 8)
-            .map(([k, d]) => `${k} ${d}`)
-            .join("  ·  ")}
+          {ESSENTIAL_KEYS.map(([k, d]) => `${k} ${d}`).join("  ·  ")}
           {"  ·  ? more"}
         </text>
       </box>
