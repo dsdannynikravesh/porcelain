@@ -7,17 +7,21 @@ import {
 } from "@opentui/react";
 import { theme } from "./theme.js";
 import { StatusBar } from "./status-bar.js";
-import { StatusPanel } from "./status-panel.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
 import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
 import { HelpFooter } from "./help-footer.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
 import { openInEditor, firstHunkLine } from "./open-editor.js";
 import { useRepoModel } from "../state/model.js";
+import { useCommitHistory } from "../state/history.js";
 import { useRepoWatch } from "../state/watch.js";
 import { getGitCwd, lastCommitMessage } from "../git/index.js";
+import { StatusPanel, type StatusTab } from "./status-panel/index.js";
+import { StatusPanelCommits } from "./status-panel/commits.js";
 
 export type Focus = "list" | "commit";
+/** Which of the two history-mode panes (commit list vs. its files) has j/k. */
+type HistoryFocus = "commits" | "files";
 
 /** Match a KeyEvent against a target like "a", "A" (shift+a), "space", "escape". */
 function isKey(key: KeyEvent, target: string): boolean {
@@ -32,10 +36,13 @@ function isKey(key: KeyEvent, target: string): boolean {
 
 export function App() {
   const model = useRepoModel();
+  const history = useCommitHistory();
   const renderer = useRenderer();
   const { width, height } = useTerminalDimensions();
 
   const [focus, setFocus] = useState<Focus>("list");
+  const [statusTab, setStatusTab] = useState<StatusTab>("changes");
+  const [historyFocus, setHistoryFocus] = useState<HistoryFocus>("commits");
   const [amend, setAmend] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [diffView, setDiffView] = useState<"split" | "unified">("split");
@@ -47,7 +54,13 @@ export function App() {
   const diffScrollRef = useRef<DiffScrollHandle>(null);
 
   const refresh = model.refresh;
-  useRepoWatch(useCallback(() => void refresh(), [refresh]));
+  const refreshHistory = history.refresh;
+  useRepoWatch(
+    useCallback(() => {
+      void refresh();
+      void refreshHistory();
+    }, [refresh, refreshHistory]),
+  );
 
   // Auto-dismiss toasts.
   useEffect(() => {
@@ -57,6 +70,8 @@ export function App() {
   }, [model.toast, model.setToast]);
 
   const listWidth = Math.max(30, Math.min(54, Math.floor(width * 0.32)));
+  const commitsWidth = Math.max(24, Math.min(42, Math.floor(width * 0.22)));
+  const diffWidth = Math.max(20, width - listWidth - (statusTab === "history" ? commitsWidth : 0));
   const stagedCount = model.status?.staged.length ?? 0;
 
   const enterCommit = useCallback(() => {
@@ -170,6 +185,8 @@ export function App() {
       return;
     }
 
+    const inHistory = statusTab === "history";
+
     // 4. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
@@ -177,32 +194,47 @@ export function App() {
       renderer.destroy();
       process.exit(0);
     } else if (isKey(key, "j") || isKey(key, "down")) {
-      model.move(1);
+      if (inHistory) {
+        if (historyFocus === "commits") history.moveCommit(1);
+        else history.moveFile(1);
+      } else {
+        model.move(1);
+      }
     } else if (isKey(key, "k") || isKey(key, "up")) {
-      model.move(-1);
+      if (inHistory) {
+        if (historyFocus === "commits") history.moveCommit(-1);
+        else history.moveFile(-1);
+      } else {
+        model.move(-1);
+      }
     } else if (isKey(key, "space") || isKey(key, "return")) {
-      if (model.selectedKey?.startsWith("dir:")) model.toggleCollapsed();
-      else void model.toggleStage();
+      if (inHistory) {
+        setHistoryFocus("files");
+      } else if (model.selectedKey?.startsWith("dir:")) {
+        model.toggleCollapsed();
+      } else {
+        void model.toggleStage();
+      }
     } else if (isKey(key, "left") || isKey(key, "h")) {
-      if (model.selectedKey?.startsWith("dir:"))
-        model.setCollapsed(model.selectedKey, true);
+      if (inHistory) setHistoryFocus("commits");
+      else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, true);
     } else if (isKey(key, "right") || isKey(key, "l")) {
-      if (model.selectedKey?.startsWith("dir:"))
-        model.setCollapsed(model.selectedKey, false);
+      if (inHistory) setHistoryFocus("files");
+      else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, false);
     } else if (isKey(key, "a")) {
-      void model.stageAll();
+      if (!inHistory) void model.stageAll();
     } else if (isKey(key, "A")) {
-      void model.unstageAll();
+      if (!inHistory) void model.unstageAll();
     } else if (isKey(key, "c")) {
-      enterCommit();
+      if (!inHistory) enterCommit();
     } else if (key.name === "s" && key.ctrl) {
-      requestCommit();
+      if (!inHistory) requestCommit();
     } else if (isKey(key, "M")) {
-      void startAmend();
+      if (!inHistory) void startAmend();
     } else if (isKey(key, "e")) {
-      void openSelectedInEditor();
+      if (!inHistory) void openSelectedInEditor();
     } else if (isKey(key, "X")) {
-      requestDiscard();
+      if (!inHistory) requestDiscard();
     } else if (isKey(key, "d")) {
       diffScrollRef.current?.scrollBy(8);
     } else if (isKey(key, "u")) {
@@ -215,8 +247,12 @@ export function App() {
       setWrapDiff((w) => !w);
     } else if (isKey(key, "r")) {
       void model.refresh();
+      void history.refresh();
     } else if (isKey(key, "tab")) {
       setFocus("commit");
+    } else if (isKey(key, "t")) {
+      setStatusTab((t) => (t === "changes" ? "history" : "changes"));
+      setHistoryFocus("commits");
     }
   });
 
@@ -236,6 +272,15 @@ export function App() {
     );
   }
 
+  const diffTitle =
+    statusTab === "history"
+      ? history.selectedPath
+        ? ` ${history.selectedPath}  (${history.selectedSha?.slice(0, 7) ?? ""}) `
+        : null
+      : model.selected
+        ? ` ${model.selected.entry.path}${model.selected.section === "staged" ? "  (staged)" : ""} `
+        : null;
+
   return (
     <box
       style={{
@@ -254,12 +299,25 @@ export function App() {
       />
 
       <box style={{ flexDirection: "row", flexGrow: 1, flexShrink: 1 }}>
+        {statusTab === "history" ? (
+          <StatusPanelCommits
+            commits={history.commits}
+            selectedSha={history.selectedSha}
+            focused={focus === "list" && historyFocus === "commits"}
+            width={commitsWidth}
+            onSelect={history.selectCommit}
+          />
+        ) : null}
         <StatusPanel
+          activeTab={statusTab}
           rows={model.rows}
           selectedKey={model.selectedKey}
-          focused={focus === "list"}
+          files={history.files}
+          selectedPath={history.selectedPath}
+          focused={focus === "list" && (statusTab === "changes" || historyFocus === "files")}
           width={listWidth}
           onSelect={model.select}
+          onSelectFile={history.selectFile}
           onActivate={(key) => {
             if (key.startsWith("dir:")) model.toggleCollapsed(key);
             else void model.toggleStage();
@@ -267,13 +325,13 @@ export function App() {
         />
         <DiffPanel
           ref={diffScrollRef}
-          selected={model.selected}
-          diff={model.diff}
-          loading={model.diffLoading}
+          title={diffTitle}
+          diff={statusTab === "history" ? history.diff : model.diff}
+          loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
           view={diffView}
           showLineNumbers={showLineNumbers}
           wrap={wrapDiff}
-          width={width - listWidth}
+          width={diffWidth}
         />
       </box>
 

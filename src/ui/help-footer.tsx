@@ -15,6 +15,7 @@ const KEYS: Array<[string, string]> = [
   ["v", "split ⇄ unified"],
   ["w", "wrap lines"],
   ["r", "refresh"],
+  ["t", "toggle history"],
   ["?", "help"],
   ["q", "quit"],
 ];

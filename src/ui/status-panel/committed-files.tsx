@@ -1,0 +1,86 @@
+// The middle pane's body in history mode: a flat list of the files changed
+// by the selected commit (no staged/unstaged distinction — that's a
+// working-tree concept that doesn't apply here). Reuses the same kind
+// badge/color conventions as changes.tsx's file rows.
+
+import { theme, BOLD, kindColor, kindBadge } from "../theme.js";
+import type { CommitFileEntry } from "../../git/index.js";
+
+interface Props {
+  files: CommitFileEntry[];
+  selectedPath: string | null;
+  focused: boolean;
+  width: number;
+  onSelect?: (path: string) => void;
+}
+
+function truncate(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `…${text.slice(-Math.max(1, max - 1))}`;
+}
+
+function RowView({
+  file,
+  selected,
+  width,
+  onSelect,
+}: {
+  file: CommitFileEntry;
+  selected: boolean;
+  width: number;
+  onSelect?: (path: string) => void;
+}) {
+  const fg = selected ? theme.selectionFg : undefined;
+  const avail = Math.max(4, width - 1 - 3);
+
+  return (
+    <box
+      onMouseDown={(e) => {
+        if (e.button === 0) onSelect?.(file.path);
+      }}
+      style={{
+        flexDirection: "row",
+        height: 1,
+        paddingLeft: 1,
+        paddingRight: 1,
+        backgroundColor: selected ? theme.selectionBg : undefined,
+      }}
+    >
+      <text
+        style={{ fg: fg ?? kindColor(file.kind), attributes: BOLD }}
+      >{`${kindBadge(file.kind)} `}</text>
+      <text style={{ fg: fg ?? theme.fg }}>{truncate(file.path, avail)}</text>
+    </box>
+  );
+}
+
+export function CommittedFiles({
+  files,
+  selectedPath,
+  focused,
+  width,
+  onSelect,
+}: Props) {
+  return (
+    <scrollbox
+      focused={focused}
+      style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
+    >
+      {files.length === 0 ? (
+        <box style={{ padding: 1 }}>
+          <text style={{ fg: theme.faint }}>No files in this commit.</text>
+        </box>
+      ) : null}
+
+      {files.map((f) => (
+        <RowView
+          key={f.path}
+          file={f}
+          selected={f.path === selectedPath}
+          width={width - 2}
+          onSelect={onSelect}
+        />
+      ))}
+    </scrollbox>
+  );
+}

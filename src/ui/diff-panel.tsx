@@ -3,7 +3,6 @@ import type { DiffRenderable } from "@opentui/core";
 import { theme } from "./theme.js";
 import { syntaxStyle } from "./syntax.js";
 import type { FileDiff } from "../git/index.js";
-import type { SelectableEntry } from "../state/model.js";
 
 export interface DiffScrollHandle {
   scrollBy: (delta: number) => void;
@@ -11,7 +10,10 @@ export interface DiffScrollHandle {
 }
 
 interface Props {
-  selected: SelectableEntry | null;
+  /** Title for the box — a working-tree file path or a commit's file path.
+   *  Null means nothing is selected. Callers build the exact text (e.g. the
+   *  " (staged)" suffix, or a short sha) since that's source-specific. */
+  title: string | null;
   diff: FileDiff | null;
   loading: boolean;
   view: "split" | "unified";
@@ -44,7 +46,7 @@ function Message({ children }: { children: string }) {
 }
 
 export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
-  { selected, diff, loading, view, showLineNumbers, wrap, width },
+  { title, diff, loading, view, showLineNumbers, wrap, width },
   ref,
 ) {
   const diffRef = useRef<DiffRenderable | null>(null);
@@ -65,14 +67,12 @@ export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
   // Reset scroll to top whenever the shown file changes.
   useEffect(() => {
     applyScroll(() => 0);
-  }, [selected?.key, diff?.patch]);
+  }, [title, diff?.patch]);
 
-  const title = selected
-    ? ` ${selected.entry.path}${selected.section === "staged" ? "  (staged)" : ""} `
-    : " Diff ";
+  const boxTitle = title ?? " Diff ";
 
   let body: React.ReactNode;
-  if (!selected) {
+  if (!title) {
     body = <Message>Select a file to see its diff.</Message>;
   } else if (loading && !diff) {
     body = <Message>Loading diff…</Message>;
@@ -111,7 +111,7 @@ export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
 
   return (
     <box
-      title={title}
+      title={boxTitle}
       titleColor="white"
       style={{
         border: true,

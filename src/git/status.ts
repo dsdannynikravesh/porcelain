@@ -40,7 +40,7 @@ export interface RepoStatus {
   staged: FileEntry[];
 }
 
-function kindFromCode(code: string): ChangeKind {
+export function kindFromCode(code: string): ChangeKind {
   switch (code) {
     case "A":
       return "added";

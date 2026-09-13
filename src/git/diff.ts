@@ -55,6 +55,31 @@ export interface FileDiff {
 const MAX_DIFF_BYTES = 400_000;
 
 /**
+ * Turn raw `git diff`/`git show` stdout into a `FileDiff`, applying the same
+ * binary/size/empty-change guards regardless of what produced the patch.
+ */
+export function patchToFileDiff(patch: string, filetype?: string): FileDiff {
+  const binary = /^Binary files .* differ$/m.test(patch);
+  if (binary) return { patch: "", filetype, truncated: false, binary: true };
+
+  if (Buffer.byteLength(patch) > MAX_DIFF_BYTES) {
+    return { patch: "", filetype, truncated: true, binary: false };
+  }
+
+  // A patch with no `@@` hunk has nothing to render — git still emits a header
+  // for new empty files, mode changes, etc. Blank the patch so the diff view
+  // doesn't fall back to showing a stale one, and say why.
+  if (patch.trim() !== "" && !/^@@/m.test(patch)) {
+    let emptyReason: FileDiff["emptyReason"] = "no-content-change";
+    if (/^new file mode/m.test(patch)) emptyReason = "new-empty-file";
+    else if (/^(old|new) mode /m.test(patch)) emptyReason = "mode-only";
+    return { patch: "", filetype, truncated: false, binary: false, emptyReason };
+  }
+
+  return { patch, filetype, truncated: false, binary: false };
+}
+
+/**
  * Produce a unified diff for one file. `staged` selects index-vs-HEAD;
  * otherwise worktree-vs-index (or worktree-vs-nothing for untracked files).
  */
@@ -75,22 +100,5 @@ export async function diffFile(entry: FileEntry, staged: boolean): Promise<FileD
     patch = res.stdout;
   }
 
-  const binary = /^Binary files .* differ$/m.test(patch);
-  if (binary) return { patch: "", filetype, truncated: false, binary: true };
-
-  if (Buffer.byteLength(patch) > MAX_DIFF_BYTES) {
-    return { patch: "", filetype, truncated: true, binary: false };
-  }
-
-  // A patch with no `@@` hunk has nothing to render — git still emits a header
-  // for new empty files, mode changes, etc. Blank the patch so the diff view
-  // doesn't fall back to showing a stale one, and say why.
-  if (patch.trim() !== "" && !/^@@/m.test(patch)) {
-    let emptyReason: FileDiff["emptyReason"] = "no-content-change";
-    if (/^new file mode/m.test(patch)) emptyReason = "new-empty-file";
-    else if (/^(old|new) mode /m.test(patch)) emptyReason = "mode-only";
-    return { patch: "", filetype, truncated: false, binary: false, emptyReason };
-  }
-
-  return { patch, filetype, truncated: false, binary: false };
+  return patchToFileDiff(patch, filetype);
 }
