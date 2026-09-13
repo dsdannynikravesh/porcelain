@@ -61,9 +61,6 @@ function RowView({
           <text style={{ fg: fg ?? theme.fg, attributes: BOLD }}>
             {truncate(row.name, avail)}
           </text>
-          <text
-            style={{ fg: fg ?? theme.faint }}
-          >{`  ${row.fileCount} changes`}</text>
         </>
       ) : (
         <>

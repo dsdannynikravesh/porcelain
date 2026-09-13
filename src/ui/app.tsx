@@ -69,9 +69,12 @@ export function App() {
     return () => clearTimeout(t);
   }, [model.toast, model.setToast]);
 
-  const listWidth = Math.max(30, Math.min(54, Math.floor(width * 0.32)));
+  const listWidth = Math.max(24, Math.min(42, Math.floor(width * 0.22)));
   const commitsWidth = Math.max(24, Math.min(42, Math.floor(width * 0.22)));
-  const diffWidth = Math.max(20, width - listWidth - (statusTab === "history" ? commitsWidth : 0));
+  const diffWidth = Math.max(
+    20,
+    width - listWidth - (statusTab === "history" ? commitsWidth : 0),
+  );
   const stagedCount = model.status?.staged.length ?? 0;
 
   const enterCommit = useCallback(() => {
@@ -217,10 +220,12 @@ export function App() {
       }
     } else if (isKey(key, "left") || isKey(key, "h")) {
       if (inHistory) setHistoryFocus("commits");
-      else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, true);
+      else if (model.selectedKey?.startsWith("dir:"))
+        model.setCollapsed(model.selectedKey, true);
     } else if (isKey(key, "right") || isKey(key, "l")) {
       if (inHistory) setHistoryFocus("files");
-      else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, false);
+      else if (model.selectedKey?.startsWith("dir:"))
+        model.setCollapsed(model.selectedKey, false);
     } else if (isKey(key, "a")) {
       if (!inHistory) void model.stageAll();
     } else if (isKey(key, "A")) {
@@ -314,8 +319,11 @@ export function App() {
           selectedKey={model.selectedKey}
           files={history.files}
           selectedPath={history.selectedPath}
-          focused={focus === "list" && (statusTab === "changes" || historyFocus === "files")}
-          width={listWidth}
+          focused={
+            focus === "list" &&
+            (statusTab === "changes" || historyFocus === "files")
+          }
+          width={commitsWidth}
           onSelect={model.select}
           onSelectFile={history.selectFile}
           onActivate={(key) => {
@@ -327,7 +335,9 @@ export function App() {
           ref={diffScrollRef}
           title={diffTitle}
           diff={statusTab === "history" ? history.diff : model.diff}
-          loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
+          loading={
+            statusTab === "history" ? history.diffLoading : model.diffLoading
+          }
           view={diffView}
           showLineNumbers={showLineNumbers}
           wrap={wrapDiff}

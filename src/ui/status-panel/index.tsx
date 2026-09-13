@@ -39,7 +39,12 @@ export function StatusPanel({
   onSelectFile,
 }: Props) {
   const isHistory = activeTab === "history";
-  const count = isHistory ? files.length : rows.reduce((n, r) => n + (r.type === "file" ? 1 : 0), 0);
+  // Count every changed file, not just currently-visible rows: a collapsed
+  // dir's children are omitted from `rows`, so fold in its fileCount instead
+  // of counting file rows directly (which would shrink as dirs collapse).
+  const count = isHistory
+    ? files.length
+    : rows.reduce((n, r) => n + (r.type === "file" ? 1 : r.collapsed ? r.fileCount : 0), 0);
 
   return (
     <box
