@@ -291,6 +291,7 @@ export function App() {
         repoPath={getGitCwd()}
         changeCount={model.entries.length}
         busy={model.busy}
+        toast={model.toast}
       />
 
       <box style={{ flexDirection: "row", flexGrow: 1, flexShrink: 1 }}>
@@ -336,23 +337,6 @@ export function App() {
         amend={amend}
         stagedCount={stagedCount}
       />
-
-      {model.toast ? (
-        <box style={{ height: 1, paddingLeft: 1 }}>
-          <text
-            style={{
-              fg:
-                model.toast.kind === "ok"
-                  ? theme.toastOk
-                  : model.toast.kind === "err"
-                    ? theme.toastErr
-                    : theme.dim,
-            }}
-          >
-            {model.toast.text}
-          </text>
-        </box>
-      ) : null}
 
       <HelpFooter expanded={false} />
 

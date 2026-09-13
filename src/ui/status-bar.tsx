@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { RepoStatus } from "../git/index.js";
+import type { Toast } from "../state/model.js";
 import { BOLD, theme } from "./theme.js";
 
 interface Props {
@@ -8,6 +9,13 @@ interface Props {
   changeCount: number;
   /** null when idle; otherwise a label for whatever's in flight ("Pushing", "Committing", ...). */
   busy: string | null;
+  /** Result of the last completed action (e.g. "Pulled Already up to date."). */
+  toast: Toast | null;
+}
+
+/** A git message can run long; keep the bar to one line regardless. */
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -53,12 +61,31 @@ function Chip({ label, color }: { label: string; color: string }) {
 // to it, whether it's showing that, a shorter chip, or plain "Up to date".
 const SYNC_SLOT_WIDTH = 26;
 
-export function StatusBar({ status, repoPath, changeCount, busy }: Props) {
+export function StatusBar({ status, repoPath, changeCount, busy, toast }: Props) {
   const branch = status?.detached ? "detached HEAD" : (status?.branch ?? "(no branch)");
   const ahead = status?.ahead ?? 0;
   const behind = status?.behind ?? 0;
   const hasSync = ahead > 0 || behind > 0;
   const spin = useSpinner(busy !== null);
+
+  // Busy takes priority (it's happening right now); otherwise show the
+  // outcome of whatever just finished; otherwise the idle change count.
+  const statusColor = busy
+    ? theme.accent
+    : toast
+      ? toast.kind === "ok"
+        ? theme.toastOk
+        : toast.kind === "err"
+          ? theme.toastErr
+          : theme.dim
+      : theme.dim;
+  const statusText = busy
+    ? `${spin} ${busy}… `
+    : toast
+      ? truncate(toast.text, 50)
+      : changeCount === 0
+        ? "clean"
+        : `${changeCount} changed`;
 
   return (
     <box
@@ -88,8 +115,8 @@ export function StatusBar({ status, repoPath, changeCount, busy }: Props) {
       </box>
 
       <text style={{ fg: theme.dim, flexGrow: 1 }}>{shortenPath(repoPath)}</text>
-      <text style={{ fg: busy ? theme.accent : theme.dim, attributes: busy ? BOLD : undefined }}>
-        {busy ? `${spin} ${busy}… ` : changeCount === 0 ? "clean" : `${changeCount} changed`}
+      <text style={{ fg: statusColor, attributes: busy || toast ? BOLD : undefined }}>
+        {statusText}
       </text>
     </box>
   );
