@@ -1,22 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type Branch,
   type CommitOutcome,
   diffFile,
   discardFile,
+  type FetchOutcome,
   type FileDiff,
   type FileEntry,
   commit as gitCommit,
+  fetch as gitFetch,
   pull as gitPull,
   push as gitPush,
+  squashToHead as gitSquash,
   stageAll as gitStageAll,
+  switchBranch as gitSwitchBranch,
   unstageAll as gitUnstageAll,
+  listBranches,
+  type PullOutcome,
+  type PushOptions,
   type PushOutcome,
   type RepoStatus,
+  type SquashOutcome,
+  type SwitchOutcome,
   stageFile,
   status,
   unstageFile,
 } from "../git/index.js";
-import type { PullOutcome } from "../git/pull.js";
 import { ancestorDirs, buildTreeRows, type TreeRow } from "./tree.js";
 
 export type Section = "unstaged" | "staged";
@@ -58,8 +67,15 @@ export interface RepoModel {
   unstageAll: () => Promise<void>;
   discardSelected: () => Promise<void>;
   commit: (message: string, amend: boolean) => Promise<CommitOutcome>;
-  push: () => Promise<PushOutcome>;
+  /** Combine every commit from HEAD back through `baseSha` (inclusive) into one. */
+  squash: (baseSha: string, message: string) => Promise<SquashOutcome>;
+  push: (opts?: PushOptions) => Promise<PushOutcome>;
   pull: () => Promise<PullOutcome>;
+  fetch: () => Promise<FetchOutcome>;
+  branches: Branch[];
+  /** Refetches the branch list — call when opening the branch picker. */
+  loadBranches: () => Promise<void>;
+  switchBranch: (name: string) => Promise<SwitchOutcome>;
   setToast: (t: Toast | null) => void;
 }
 
@@ -87,6 +103,7 @@ export function useRepoModel(): RepoModel {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
 
   const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
 
@@ -308,23 +325,50 @@ export function useRepoModel(): RepoModel {
     [refresh],
   );
 
-  const push = useCallback(async (): Promise<PushOutcome> => {
-    if (busyRef.current) return { ok: false, message: "busy" };
-    busyRef.current = "Pushing";
-    setBusy("Pushing");
-    try {
-      const outcome = await gitPush();
-      setToast({
-        kind: outcome.ok ? "ok" : "err",
-        text: outcome.ok ? `Pushed ${outcome.message}` : outcome.message,
-      });
-      await refresh();
-      return outcome;
-    } finally {
-      busyRef.current = null;
-      setBusy(null);
-    }
-  }, [refresh]);
+  const squash = useCallback(
+    async (baseSha: string, message: string): Promise<SquashOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Squashing";
+      setBusy("Squashing");
+      try {
+        const outcome = await gitSquash(baseSha, message);
+        setToast({
+          kind: outcome.ok ? "ok" : "err",
+          text: outcome.ok ? `Squashed into ${outcome.message}` : outcome.message,
+        });
+        // Rewrites local history — the caller (app.tsx) owns the separate
+        // history hook and is responsible for refreshing that too.
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
+  const push = useCallback(
+    async (opts: PushOptions = {}): Promise<PushOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      const label = opts.forceWithLease ? "Force pushing" : "Pushing";
+      busyRef.current = label;
+      setBusy(label);
+      try {
+        const outcome = await gitPush(opts);
+        setToast({
+          kind: outcome.ok ? "ok" : "err",
+          text: outcome.ok ? `Pushed ${outcome.message}` : outcome.message,
+        });
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
 
   const pull = useCallback(async (): Promise<PullOutcome> => {
     if (busyRef.current) return { ok: false, message: "busy" };
@@ -344,9 +388,61 @@ export function useRepoModel(): RepoModel {
     }
   }, [refresh]);
 
+  const fetch = useCallback(async (): Promise<FetchOutcome> => {
+    if (busyRef.current) return { ok: false, message: "busy" };
+    busyRef.current = "Fetching";
+    setBusy("Fetching");
+    try {
+      const outcome = await gitFetch();
+      setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+      // ahead/behind are relative to the remote-tracking ref fetch just moved.
+      await refresh();
+      return outcome;
+    } finally {
+      busyRef.current = null;
+      setBusy(null);
+    }
+  }, [refresh]);
+
+  const loadBranches = useCallback(async () => {
+    try {
+      setBranches(await listBranches());
+    } catch (err) {
+      setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+    }
+  }, []);
+
+  const switchBranch = useCallback(
+    async (name: string): Promise<SwitchOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Switching branch";
+      setBusy("Switching branch");
+      try {
+        const outcome = await gitSwitchBranch(name);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        // A different branch means different status, tree, and diff — but
+        // history (commit log) lives in a separate hook the caller owns, so
+        // it's on the caller to refresh that too after this resolves.
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Fetch once on startup so ahead/behind (and the sync chips built on them)
+  // reflect the remote's actual current state, not whatever was last fetched
+  // in some earlier session — local status alone can't tell the two apart.
+  useEffect(() => {
+    void fetch();
+  }, [fetch]);
 
   const selected = entries.find((e) => e.key === selectedKey) ?? null;
 
@@ -372,8 +468,13 @@ export function useRepoModel(): RepoModel {
     unstageAll,
     discardSelected,
     commit,
+    squash,
     push,
     pull,
+    fetch,
+    branches,
+    loadBranches,
+    switchBranch,
     setToast,
   };
 }

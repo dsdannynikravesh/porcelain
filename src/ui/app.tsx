@@ -5,6 +5,7 @@ import { getGitCwd, lastCommitMessage } from "../git/index.js";
 import { useCommitHistory } from "../state/history.js";
 import { useRepoModel } from "../state/model.js";
 import { useRepoWatch } from "../state/watch.js";
+import { BranchPicker } from "./branch-picker.js";
 import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
@@ -40,11 +41,15 @@ export function App() {
   const [statusTab, setStatusTab] = useState<StatusTab>("changes");
   const [historyFocus, setHistoryFocus] = useState<HistoryFocus>("commits");
   const [amend, setAmend] = useState(false);
+  /** Set while squashing: the oldest commit being folded in, and how many total. */
+  const [squash, setSquash] = useState<{ baseSha: string; count: number } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [diffView, setDiffView] = useState<"split" | "unified">("split");
   const [showLineNumbers, setShowLineNumbers] = useState(true);
   const [wrapDiff, setWrapDiff] = useState(true);
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+  const [showBranches, setShowBranches] = useState(false);
+  const [branchIndex, setBranchIndex] = useState(0);
 
   const commitRef = useRef<CommitBoxHandle>(null);
   const diffScrollRef = useRef<DiffScrollHandle>(null);
@@ -77,6 +82,7 @@ export function App() {
   const cancelCommit = useCallback(() => {
     setFocus("list");
     setAmend(false);
+    setSquash(null);
     commitRef.current?.clear();
   }, []);
 
@@ -116,6 +122,58 @@ export function App() {
     setFocus("commit");
   }, []);
 
+  const startSquash = useCallback(() => {
+    const idx = history.commits.findIndex((c) => c.sha === history.selectedSha);
+    if (idx <= 0) {
+      model.setToast({ kind: "err", text: "Select an older commit to squash into" });
+      return;
+    }
+    if (model.entries.length > 0) {
+      model.setToast({ kind: "err", text: "Commit or discard your changes before squashing" });
+      return;
+    }
+    const range = history.commits.slice(0, idx + 1);
+    // Oldest-first, matching the order they'll read in once combined.
+    const message = range
+      .slice()
+      .reverse()
+      .map((c) => c.subject)
+      .join("\n");
+    commitRef.current?.setText(message);
+    setSquash({ baseSha: history.selectedSha!, count: range.length });
+    setFocus("commit");
+  }, [history, model]);
+
+  const doSquash = useCallback(async () => {
+    if (!squash) return;
+    const message = commitRef.current?.getText() ?? "";
+    if (!message.trim()) {
+      model.setToast({ kind: "err", text: "Write a commit message first" });
+      return;
+    }
+    const outcome = await model.squash(squash.baseSha, message);
+    if (outcome.ok) {
+      commitRef.current?.clear();
+      setSquash(null);
+      setFocus("list");
+      void history.refresh();
+    }
+  }, [squash, model, history]);
+
+  const requestSquash = useCallback(() => {
+    if (!squash) return;
+    setConfirm({
+      title: "Squash commits",
+      body: `Combine the last ${squash.count} commits into one. Don't do this if you've already pushed any of them, unless you're ready to force-push after.`,
+      // Displayed only — abbreviated so the single-line command box (no
+      // room to wrap) doesn't silently drop the tail of a full 40-char sha.
+      // model.squash still gets the full squash.baseSha below.
+      command: `git reset --soft ${squash.baseSha.slice(0, 7)}^ && git commit -m <message>`,
+      danger: true,
+      run: doSquash,
+    });
+  }, [squash, doSquash]);
+
   const openSelectedInEditor = useCallback(async () => {
     const sel = model.selected;
     if (!sel) return;
@@ -126,6 +184,30 @@ export function App() {
     });
     void model.refresh();
   }, [model, renderer]);
+
+  const openBranchPicker = useCallback(() => {
+    setShowBranches(true);
+    void model.loadBranches();
+  }, [model]);
+
+  // Once the list loads, start the cursor on whichever branch is current.
+  useEffect(() => {
+    if (!showBranches) return;
+    const idx = model.branches.findIndex((b) => b.current);
+    setBranchIndex(idx >= 0 ? idx : 0);
+  }, [showBranches, model.branches]);
+
+  const requestForcePush = useCallback(() => {
+    setConfirm({
+      title: "Force push",
+      body: "Overwrites the remote branch with your local history — for after an amend or rebase. Safe against clobbering unseen work (git still refuses if the remote moved since your last fetch), but collaborators who already pulled the old history will need to reset to it.",
+      command: "git push --force-with-lease",
+      danger: true,
+      run: async () => {
+        await model.push({ forceWithLease: true });
+      },
+    });
+  }, [model]);
 
   const requestDiscard = useCallback(() => {
     const sel = model.selected;
@@ -165,12 +247,34 @@ export function App() {
       return;
     }
 
-    // 3. Commit editor mode — let the textarea have the keys, only intercept a few.
+    // 3. Branch picker owns all input while open.
+    if (showBranches) {
+      if (isKey(key, "escape")) {
+        setShowBranches(false);
+      } else if (isKey(key, "j") || isKey(key, "down")) {
+        setBranchIndex((i) => Math.min(i + 1, model.branches.length - 1));
+      } else if (isKey(key, "k") || isKey(key, "up")) {
+        setBranchIndex((i) => Math.max(i - 1, 0));
+      } else if (isKey(key, "return") || isKey(key, "space")) {
+        const target = model.branches[branchIndex];
+        setShowBranches(false);
+        if (target && !target.current) {
+          void (async () => {
+            await model.switchBranch(target.name);
+            void history.refresh();
+          })();
+        }
+      }
+      return;
+    }
+
+    // 4. Commit editor mode — let the textarea have the keys, only intercept a few.
     if (focus === "commit") {
       if (isKey(key, "escape")) {
         cancelCommit();
       } else if (key.name === "s" && key.ctrl) {
-        requestCommit();
+        if (squash) requestSquash();
+        else requestCommit();
       } else if (isKey(key, "tab")) {
         setFocus("list");
       }
@@ -179,7 +283,7 @@ export function App() {
 
     const inHistory = statusTab === "history";
 
-    // 4. List mode.
+    // 5. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
     } else if (isKey(key, "q")) {
@@ -225,6 +329,8 @@ export function App() {
       if (!inHistory) void startAmend();
     } else if (isKey(key, "P")) {
       if (!inHistory) void model.push();
+    } else if (key.name === "p" && key.ctrl) {
+      if (!inHistory) requestForcePush();
     } else if (isKey(key, "p")) {
       if (!inHistory) void model.pull();
     } else if (isKey(key, "e")) {
@@ -249,6 +355,10 @@ export function App() {
     } else if (isKey(key, "t")) {
       setStatusTab((t) => (t === "changes" ? "history" : "changes"));
       setHistoryFocus("commits");
+    } else if (isKey(key, "b")) {
+      openBranchPicker();
+    } else if (isKey(key, "s")) {
+      if (inHistory && historyFocus === "commits") startSquash();
     }
   });
 
@@ -335,6 +445,7 @@ export function App() {
         ref={commitRef}
         focused={focus === "commit"}
         amend={amend}
+        squashCount={squash?.count}
         stagedCount={stagedCount}
       />
 
@@ -361,6 +472,7 @@ export function App() {
       ) : null}
 
       {confirm ? <Confirm request={confirm} /> : null}
+      {showBranches ? <BranchPicker branches={model.branches} selectedIndex={branchIndex} /> : null}
     </box>
   );
 }

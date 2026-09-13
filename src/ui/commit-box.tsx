@@ -11,14 +11,17 @@ export interface CommitBoxHandle {
 interface Props {
   focused: boolean;
   amend: boolean;
+  /** Set (to the number of commits involved) while squashing history into one. */
+  squashCount?: number;
   stagedCount: number;
 }
 
 export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
-  { focused, amend, stagedCount },
+  { focused, amend, squashCount, stagedCount },
   ref,
 ) {
   const areaRef = useRef<TextareaRenderable | null>(null);
+  const squashing = squashCount !== undefined;
 
   useImperativeHandle(ref, () => ({
     getText: () => areaRef.current?.plainText ?? "",
@@ -28,13 +31,16 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
 
   const hint = amend
     ? "amending HEAD"
-    : stagedCount === 0
-      ? "nothing staged"
-      : `${stagedCount} file${stagedCount === 1 ? "" : "s"} staged`;
+    : squashing
+      ? `squashing ${squashCount} commits into one`
+      : stagedCount === 0
+        ? "nothing staged"
+        : `${stagedCount} file${stagedCount === 1 ? "" : "s"} staged`;
+  const highlighted = amend || squashing;
 
   return (
     <box
-      title={amend ? " Commit — AMEND " : " Commit "}
+      title={amend ? " Commit — AMEND " : squashing ? " Commit — SQUASH " : " Commit "}
       style={{
         border: true,
         borderColor: focused ? theme.borderActive : theme.border,
@@ -56,8 +62,8 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
       <box style={{ flexDirection: "row", height: 1, paddingLeft: 1 }}>
         <text
           style={{
-            fg: amend ? theme.warn : theme.faint,
-            attributes: amend ? BOLD : 0,
+            fg: highlighted ? theme.warn : theme.faint,
+            attributes: highlighted ? BOLD : 0,
           }}
         >
           {hint}

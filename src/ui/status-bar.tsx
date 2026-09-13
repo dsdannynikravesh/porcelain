@@ -66,6 +66,10 @@ export function StatusBar({ status, repoPath, changeCount, busy, toast }: Props)
   const ahead = status?.ahead ?? 0;
   const behind = status?.behind ?? 0;
   const hasSync = ahead > 0 || behind > 0;
+  // Both nonzero means the branches share no common tip anymore (typically
+  // after an amend/rebase of an already-pushed commit) — a plain push will
+  // be rejected, so point at the force-push binding instead.
+  const diverged = ahead > 0 && behind > 0;
   const spin = useSpinner(busy !== null);
 
   // Busy takes priority (it's happening right now); otherwise show the
@@ -104,7 +108,12 @@ export function StatusBar({ status, repoPath, changeCount, busy, toast }: Props)
           hasSync ? (
             <>
               {behind > 0 ? <Chip label={`⇣${behind} Pull p`} color={theme.warn} /> : null}
-              {ahead > 0 ? <Chip label={`⇡${ahead} Push P`} color={theme.accent} /> : null}
+              {ahead > 0 ? (
+                <Chip
+                  label={diverged ? `⇡${ahead} Push^P` : `⇡${ahead} Push P`}
+                  color={diverged ? theme.warn : theme.accent}
+                />
+              ) : null}
             </>
           ) : (
             <text style={{ fg: theme.faint }}>{" Up to date"}</text>

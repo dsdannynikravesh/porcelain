@@ -14,6 +14,7 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["M", "amend"],
   ["p", "pull"],
   ["P", "push"],
+  ["Ctrl+P", "force push (--force-with-lease)"],
   ["e", "open in $EDITOR"],
   ["X", "discard"],
   ["d / u", "scroll diff"],
@@ -21,6 +22,8 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["w", "wrap lines"],
   ["r", "refresh"],
   ["t", "toggle history"],
+  ["b", "switch branch"],
+  ["s", "squash to here (history tab)"],
   ["?", "help", true],
   ["q", "quit", true],
 ];
