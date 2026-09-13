@@ -80,13 +80,7 @@ function splitRecords(raw: string): string[] {
 export async function status(): Promise<RepoStatus> {
   // `-uall` lists every file inside an untracked directory instead of collapsing
   // it to a single "dir/" entry — we want to show and stage individual files.
-  const raw = await runGitOrThrow([
-    "status",
-    "--porcelain=v2",
-    "--branch",
-    "-z",
-    "-uall",
-  ]);
+  const raw = await runGitOrThrow(["status", "--porcelain=v2", "--branch", "-z", "-uall"]);
 
   const result: RepoStatus = {
     branch: null,

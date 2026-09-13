@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  status,
+  type CommitOutcome,
   diffFile,
-  stageFile,
-  unstageFile,
+  discardFile,
+  type FileDiff,
+  type FileEntry,
+  commit as gitCommit,
+  pull as gitPull,
+  push as gitPush,
   stageAll as gitStageAll,
   unstageAll as gitUnstageAll,
-  discardFile,
-  commit as gitCommit,
+  type PushOutcome,
   type RepoStatus,
-  type FileEntry,
-  type FileDiff,
-  type CommitOutcome,
+  stageFile,
+  status,
+  unstageFile,
 } from "../git/index.js";
-import { buildTreeRows, ancestorDirs, type TreeRow } from "./tree.js";
+import type { PullOutcome } from "../git/pull.js";
+import { ancestorDirs, buildTreeRows, type TreeRow } from "./tree.js";
 
 export type Section = "unstaged" | "staged";
 
@@ -41,7 +45,8 @@ export interface RepoModel {
   loading: boolean;
   error: string | null;
   toast: Toast | null;
-  busy: boolean;
+  /** null when idle; otherwise a label for whatever git mutation is in flight ("Pushing", "Committing", ...). */
+  busy: string | null;
   refresh: () => Promise<void>;
   select: (key: string) => void;
   move: (delta: number) => void;
@@ -53,6 +58,8 @@ export interface RepoModel {
   unstageAll: () => Promise<void>;
   discardSelected: () => Promise<void>;
   commit: (message: string, amend: boolean) => Promise<CommitOutcome>;
+  push: () => Promise<PushOutcome>;
+  pull: () => Promise<PullOutcome>;
   setToast: (t: Toast | null) => void;
 }
 
@@ -79,7 +86,7 @@ export function useRepoModel(): RepoModel {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
 
@@ -97,8 +104,8 @@ export function useRepoModel(): RepoModel {
   const prevRowsRef = useRef<TreeRow[]>([]);
   /** Selection to apply on the next refresh, set by mutations. */
   const pendingSelectRef = useRef<string | null>(null);
-  /** True while a git mutation + refresh is in flight. */
-  const busyRef = useRef(false);
+  /** Label of whatever git mutation + refresh is in flight, or null when idle. */
+  const busyRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -157,7 +164,10 @@ export function useRepoModel(): RepoModel {
       .catch((err) => {
         if (diffReqRef.current === reqId) {
           setDiff(null);
-          setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+          setToast({
+            kind: "err",
+            text: err instanceof Error ? err.message : String(err),
+          });
         }
       })
       .finally(() => {
@@ -219,21 +229,24 @@ export function useRepoModel(): RepoModel {
   }, []);
 
   const runMutation = useCallback(
-    async (fn: () => Promise<void>, okText?: string) => {
+    async (fn: () => Promise<void>, busyLabel: string, okText?: string) => {
       // Serialise mutations — ignore new ones while one is in flight so a burst
       // of keypresses can't act on stale state.
       if (busyRef.current) return;
-      busyRef.current = true;
-      setBusy(true);
+      busyRef.current = busyLabel;
+      setBusy(busyLabel);
       try {
         await fn();
         if (okText) setToast({ kind: "ok", text: okText });
         await refresh();
       } catch (err) {
-        setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+        setToast({
+          kind: "err",
+          text: err instanceof Error ? err.message : String(err),
+        });
       } finally {
-        busyRef.current = false;
-        setBusy(false);
+        busyRef.current = null;
+        setBusy(null);
       }
     },
     [refresh],
@@ -244,25 +257,33 @@ export function useRepoModel(): RepoModel {
     const current = entriesRef.current.find((e) => e.key === selectedKeyRef.current);
     if (!current) return;
     const path = current.entry.path;
-    const goingTo: Section = current.section === "unstaged" ? "staged" : "unstaged";
+    const goingToStaged = current.section === "unstaged";
     // Follow the file across sections so a second toggle acts on the same file.
     expandAncestors(path);
-    pendingSelectRef.current = `${goingTo}:${path}`;
-    await runMutation(() =>
-      current.section === "unstaged" ? stageFile(current.entry) : unstageFile(current.entry),
+    pendingSelectRef.current = `${goingToStaged ? "staged" : "unstaged"}:${path}`;
+    await runMutation(
+      () => (goingToStaged ? stageFile(current.entry) : unstageFile(current.entry)),
+      goingToStaged ? "Staging file" : "Unstaging file",
     );
   }, [runMutation, expandAncestors]);
 
-  const stageAll = useCallback(() => runMutation(() => gitStageAll(), "Staged all changes"), [runMutation]);
+  const stageAll = useCallback(
+    () => runMutation(() => gitStageAll(), "Staging all changes", "Staged all changes"),
+    [runMutation],
+  );
   const unstageAll = useCallback(
-    () => runMutation(() => gitUnstageAll(), "Unstaged everything"),
+    () => runMutation(() => gitUnstageAll(), "Unstaging everything", "Unstaged everything"),
     [runMutation],
   );
 
   const discardSelected = useCallback(async () => {
     const current = entriesRef.current.find((e) => e.key === selectedKeyRef.current);
     if (!current) return;
-    await runMutation(() => discardFile(current.entry), `Discarded ${current.entry.path}`);
+    await runMutation(
+      () => discardFile(current.entry),
+      "Discarding",
+      `Discarded ${current.entry.path}`,
+    );
   }, [runMutation]);
 
   const commit = useCallback(
@@ -285,6 +306,42 @@ export function useRepoModel(): RepoModel {
     },
     [refresh],
   );
+
+  const push = useCallback(async (): Promise<PushOutcome> => {
+    if (busyRef.current) return { ok: false, message: "busy" };
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const outcome = await gitPush();
+      setToast({
+        kind: outcome.ok ? "ok" : "err",
+        text: outcome.ok ? `Pushed ${outcome.message}` : outcome.message,
+      });
+      await refresh();
+      return outcome;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, [refresh]);
+
+  const pull = useCallback(async (): Promise<PullOutcome> => {
+    if (busyRef.current) return { ok: false, message: "busy" };
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      const outcome = await gitPull();
+      setToast({
+        kind: outcome.ok ? "ok" : "err",
+        text: outcome.ok ? `Pulled ${outcome.message}` : outcome.message,
+      });
+      await refresh();
+      return outcome;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     void refresh();
@@ -314,6 +371,8 @@ export function useRepoModel(): RepoModel {
     unstageAll,
     discardSelected,
     commit,
+    push,
+    pull,
     setToast,
   };
 }

@@ -1,4 +1,4 @@
-import { theme, BOLD } from "./theme.js";
+import { BOLD, theme } from "./theme.js";
 
 const KEYS: Array<[string, string]> = [
   ["j / k", "move"],
@@ -9,6 +9,8 @@ const KEYS: Array<[string, string]> = [
   ["c", "commit msg"],
   ["Ctrl+S", "commit"],
   ["M", "amend"],
+  ["p", "pull"],
+  ["P", "push"],
   ["e", "open in $EDITOR"],
   ["X", "discard"],
   ["d / u", "scroll diff"],

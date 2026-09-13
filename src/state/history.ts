@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  listCommits,
-  filesInCommit,
-  commitFileDiff,
   type CommitEntry,
   type CommitFileEntry,
+  commitFileDiff,
   type FileDiff,
+  filesInCommit,
+  listCommits,
 } from "../git/index.js";
 
 // Independent from state/model.ts (which is entirely working-tree/index
@@ -67,7 +67,9 @@ export function useCommitHistory(): HistoryModel {
       setCommits(list);
       setError(null);
       // Keep the current selection if it's still around, otherwise land on HEAD.
-      setSelectedSha((prev) => (prev && list.some((c) => c.sha === prev) ? prev : (list[0]?.sha ?? null)));
+      setSelectedSha((prev) =>
+        prev && list.some((c) => c.sha === prev) ? prev : (list[0]?.sha ?? null),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -92,7 +94,9 @@ export function useCommitHistory(): HistoryModel {
       .then((list) => {
         if (filesReqRef.current !== reqId) return;
         setFiles(list);
-        setSelectedPath((prev) => (prev && list.some((f) => f.path === prev) ? prev : (list[0]?.path ?? null)));
+        setSelectedPath((prev) =>
+          prev && list.some((f) => f.path === prev) ? prev : (list[0]?.path ?? null),
+        );
       })
       .catch(() => {
         if (filesReqRef.current === reqId) setFiles([]);

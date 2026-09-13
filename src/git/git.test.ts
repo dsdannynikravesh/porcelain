@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runGit, runGitOrThrow, setGitCwd, findRepoRoot } from "./exec.js";
-import { status } from "./status.js";
-import { diffFile } from "./diff.js";
-import { stageFile, unstageFile } from "./stage.js";
 import { commit } from "./commit.js";
+import { diffFile } from "./diff.js";
+import { findRepoRoot, runGit, runGitOrThrow, setGitCwd } from "./exec.js";
+import { stageFile, unstageFile } from "./stage.js";
+import { status } from "./status.js";
 
 let repo: string;
 

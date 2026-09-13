@@ -33,7 +33,10 @@ export function getGitCwd(): string {
  * Run a git command. Resolves with stdout/stderr/code for any exit status;
  * use `runGitOrThrow` when a non-zero exit should be an error.
  */
-export function runGit(args: string[], opts: { cwd?: string; input?: string } = {}): Promise<GitResult> {
+export function runGit(
+  args: string[],
+  opts: { cwd?: string; input?: string } = {},
+): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const child = spawn("git", args, {
       cwd: opts.cwd ?? cachedCwd,

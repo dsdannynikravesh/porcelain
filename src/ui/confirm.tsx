@@ -1,4 +1,4 @@
-import { theme, BOLD } from "./theme.js";
+import { BOLD, theme } from "./theme.js";
 
 export interface ConfirmRequest {
   title: string;
@@ -48,7 +48,12 @@ export function Confirm({ request }: { request: ConfirmRequest }) {
           <text style={{ fg: theme.headerFg }}>{`$ ${request.command}`}</text>
         </box>
         <box style={{ flexDirection: "row", gap: 2, height: 1 }}>
-          <text style={{ fg: request.danger ? theme.removed : theme.added, attributes: BOLD }}>
+          <text
+            style={{
+              fg: request.danger ? theme.removed : theme.added,
+              attributes: BOLD,
+            }}
+          >
             y — confirm
           </text>
           <text style={{ fg: theme.dim }}>n / Esc — cancel</text>

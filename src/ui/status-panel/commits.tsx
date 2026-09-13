@@ -3,8 +3,8 @@
 // Selecting a commit here drives what status-panel/index.tsx's "Files" list
 // and the DiffPanel show next to it.
 
-import { theme, BOLD } from "../theme.js";
 import type { CommitEntry } from "../../git/index.js";
+import { BOLD, theme } from "../theme.js";
 
 interface Props {
   commits: CommitEntry[];

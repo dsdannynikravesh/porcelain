@@ -1,4 +1,4 @@
-import { runGit, runGitOrThrow, GitError } from "./exec.js";
+import { GitError, runGit, runGitOrThrow } from "./exec.js";
 
 export interface CommitOptions {
   amend?: boolean;
@@ -22,7 +22,10 @@ export async function commit(message: string, opts: CommitOptions = {}): Promise
 
   const res = await runGit(args);
   if (res.code !== 0) {
-    return { ok: false, message: (res.stderr || res.stdout).trim().split("\n")[0] ?? "commit failed" };
+    return {
+      ok: false,
+      message: (res.stderr || res.stdout).trim().split("\n")[0] ?? "commit failed",
+    };
   }
 
   const summary = await runGit(["log", "-1", "--pretty=%h %s"]);

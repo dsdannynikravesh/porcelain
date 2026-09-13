@@ -1,11 +1,8 @@
 import { expect, test } from "bun:test";
-import { buildTreeRows, ancestorDirs } from "./tree.js";
 import type { SelectableEntry } from "./model.js";
+import { ancestorDirs, buildTreeRows } from "./tree.js";
 
-function entry(
-  path: string,
-  section: "unstaged" | "staged" = "unstaged",
-): SelectableEntry {
+function entry(path: string, section: "unstaged" | "staged" = "unstaged"): SelectableEntry {
   return {
     section,
     key: `${section}:${path}`,
@@ -27,11 +24,7 @@ test("nests files under directory rows, dirs before files", () => {
     [entry("src/ui/app.tsx"), entry("src/model.ts"), entry("README.md")],
     new Set(),
   );
-  expect(
-    rows.map(
-      (r) => `${r.type}:${r.type === "dir" ? r.path : r.name}@${r.depth}`,
-    ),
-  ).toEqual([
+  expect(rows.map((r) => `${r.type}:${r.type === "dir" ? r.path : r.name}@${r.depth}`)).toEqual([
     "dir:src@0",
     "dir:src/ui@1",
     "file:app.tsx@2",
@@ -61,18 +54,11 @@ test("collapsed directory hides its descendants but still counts them", () => {
 });
 
 test("staged and unstaged versions of one path produce two file rows", () => {
-  const rows = buildTreeRows(
-    [entry("x.ts", "unstaged"), entry("x.ts", "staged")],
-    new Set(),
-  );
+  const rows = buildTreeRows([entry("x.ts", "unstaged"), entry("x.ts", "staged")], new Set());
   expect(rows.filter((r) => r.type === "file")).toHaveLength(2);
 });
 
 test("ancestorDirs lists every parent directory", () => {
-  expect(ancestorDirs("src/ui/components/Foo.tsx")).toEqual([
-    "src",
-    "src/ui",
-    "src/ui/components",
-  ]);
+  expect(ancestorDirs("src/ui/components/Foo.tsx")).toEqual(["src", "src/ui", "src/ui/components"]);
   expect(ancestorDirs("top.ts")).toEqual([]);
 });

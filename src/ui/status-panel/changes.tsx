@@ -3,7 +3,7 @@
 // `dir:<path>` key; file rows carry the SelectableEntry key.
 
 import type { TreeRow } from "../../state/tree.js";
-import { theme, BOLD, kindColor, kindBadge } from "../theme.js";
+import { BOLD, kindBadge, kindColor, theme } from "../theme.js";
 
 interface Props {
   rows: TreeRow[];
@@ -55,12 +55,8 @@ function RowView({
     >
       {row.type === "dir" ? (
         <>
-          <text style={{ fg: fg ?? theme.dim }}>
-            {row.collapsed ? "▸ " : "▾ "}
-          </text>
-          <text style={{ fg: fg ?? theme.fg, attributes: BOLD }}>
-            {truncate(row.name, avail)}
-          </text>
+          <text style={{ fg: fg ?? theme.dim }}>{row.collapsed ? "▸ " : "▾ "}</text>
+          <text style={{ fg: fg ?? theme.fg, attributes: BOLD }}>{truncate(row.name, avail)}</text>
         </>
       ) : (
         <>
@@ -72,9 +68,7 @@ function RowView({
           >
             {`${kindBadge(row.entry.entry.kind)} `}
           </text>
-          <text style={{ fg: fg ?? theme.fg }}>
-            {truncate(row.name, avail)}
-          </text>
+          <text style={{ fg: fg ?? theme.fg }}>{truncate(row.name, avail)}</text>
           {row.entry.section === "staged" ? (
             <text style={{ fg: fg ?? theme.added }}> ●</text>
           ) : null}
@@ -99,9 +93,7 @@ export function StatusPanelChanges({
     >
       {rows.length === 0 ? (
         <box style={{ padding: 1 }}>
-          <text style={{ fg: theme.faint }}>
-            Nothing to commit — working tree clean.
-          </text>
+          <text style={{ fg: theme.faint }}>Nothing to commit — working tree clean.</text>
         </box>
       ) : null}
 

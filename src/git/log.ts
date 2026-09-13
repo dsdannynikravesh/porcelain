@@ -1,6 +1,6 @@
-import { runGitOrThrow, runGit } from "./exec.js";
-import { filetypeFor, patchToFileDiff, type FileDiff } from "./diff.js";
-import { kindFromCode, type ChangeKind } from "./status.js";
+import { type FileDiff, filetypeFor, patchToFileDiff } from "./diff.js";
+import { runGit, runGitOrThrow } from "./exec.js";
+import { type ChangeKind, kindFromCode } from "./status.js";
 
 export interface CommitEntry {
   sha: string;
@@ -81,7 +81,11 @@ export async function filesInCommit(sha: string): Promise<CommitFileEntry[]> {
 }
 
 /** Diff for a single file as it changed in one commit (vs. that commit's parent). */
-export async function commitFileDiff(sha: string, path: string, origPath?: string): Promise<FileDiff> {
+export async function commitFileDiff(
+  sha: string,
+  path: string,
+  origPath?: string,
+): Promise<FileDiff> {
   const filetype = filetypeFor(path);
   // --format="" suppresses the commit-message header `git show` would
   // otherwise print before the diff.

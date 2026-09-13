@@ -73,7 +73,13 @@ export function patchToFileDiff(patch: string, filetype?: string): FileDiff {
     let emptyReason: FileDiff["emptyReason"] = "no-content-change";
     if (/^new file mode/m.test(patch)) emptyReason = "new-empty-file";
     else if (/^(old|new) mode /m.test(patch)) emptyReason = "mode-only";
-    return { patch: "", filetype, truncated: false, binary: false, emptyReason };
+    return {
+      patch: "",
+      filetype,
+      truncated: false,
+      binary: false,
+      emptyReason,
+    };
   }
 
   return { patch, filetype, truncated: false, binary: false };

@@ -9,8 +9,8 @@ export async function stageFile(entry: FileEntry): Promise<void> {
 /** Remove a path's changes from the index, leaving the worktree untouched. */
 export async function unstageFile(entry: FileEntry): Promise<void> {
   // `restore --staged` works whether or not HEAD exists in modern git; fall back to reset.
-  const res = await runGitOrThrow(["reset", "--quiet", "HEAD", "--", entry.path]).catch(
-    () => runGitOrThrow(["rm", "--cached", "-r", "--", entry.path]),
+  const res = await runGitOrThrow(["reset", "--quiet", "HEAD", "--", entry.path]).catch(() =>
+    runGitOrThrow(["rm", "--cached", "-r", "--", entry.path]),
   );
   void res;
 }
@@ -20,7 +20,9 @@ export async function stageAll(): Promise<void> {
 }
 
 export async function unstageAll(): Promise<void> {
-  await runGitOrThrow(["reset", "--quiet"]).catch(() => runGitOrThrow(["rm", "-r", "--cached", "."]));
+  await runGitOrThrow(["reset", "--quiet"]).catch(() =>
+    runGitOrThrow(["rm", "-r", "--cached", "."]),
+  );
 }
 
 /** Discard worktree changes for a tracked path, or delete an untracked file. */

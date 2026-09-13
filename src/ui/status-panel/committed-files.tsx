@@ -3,8 +3,8 @@
 // working-tree concept that doesn't apply here). Reuses the same kind
 // badge/color conventions as changes.tsx's file rows.
 
-import { theme, BOLD, kindColor, kindBadge } from "../theme.js";
 import type { CommitFileEntry } from "../../git/index.js";
+import { BOLD, kindBadge, kindColor, theme } from "../theme.js";
 
 interface Props {
   files: CommitFileEntry[];
@@ -54,13 +54,7 @@ function RowView({
   );
 }
 
-export function CommittedFiles({
-  files,
-  selectedPath,
-  focused,
-  width,
-  onSelect,
-}: Props) {
+export function CommittedFiles({ files, selectedPath, focused, width, onSelect }: Props) {
   return (
     <scrollbox
       focused={focused}

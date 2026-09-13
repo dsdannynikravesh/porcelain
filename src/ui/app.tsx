@@ -1,23 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyEvent } from "@opentui/core";
-import {
-  useKeyboard,
-  useRenderer,
-  useTerminalDimensions,
-} from "@opentui/react";
-import { theme } from "./theme.js";
-import { StatusBar } from "./status-bar.js";
-import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
-import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
-import { HelpFooter } from "./help-footer.js";
-import { Confirm, type ConfirmRequest } from "./confirm.js";
-import { openInEditor, firstHunkLine } from "./open-editor.js";
-import { useRepoModel } from "../state/model.js";
-import { useCommitHistory } from "../state/history.js";
-import { useRepoWatch } from "../state/watch.js";
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getGitCwd, lastCommitMessage } from "../git/index.js";
-import { StatusPanel, type StatusTab } from "./status-panel/index.js";
+import { useCommitHistory } from "../state/history.js";
+import { useRepoModel } from "../state/model.js";
+import { useRepoWatch } from "../state/watch.js";
+import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
+import { Confirm, type ConfirmRequest } from "./confirm.js";
+import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
+import { HelpFooter } from "./help-footer.js";
+import { firstHunkLine, openInEditor } from "./open-editor.js";
+import { StatusBar } from "./status-bar.js";
 import { StatusPanelCommits } from "./status-panel/commits.js";
+import { StatusPanel, type StatusTab } from "./status-panel/index.js";
+import { theme } from "./theme.js";
 
 export type Focus = "list" | "commit";
 /** Which of the two history-mode panes (commit list vs. its files) has j/k. */
@@ -71,10 +67,7 @@ export function App() {
 
   const listWidth = Math.max(24, Math.min(42, Math.floor(width * 0.22)));
   const commitsWidth = Math.max(24, Math.min(42, Math.floor(width * 0.22)));
-  const diffWidth = Math.max(
-    20,
-    width - listWidth - (statusTab === "history" ? commitsWidth : 0),
-  );
+  const diffWidth = Math.max(20, width - listWidth - (statusTab === "history" ? commitsWidth : 0));
   const stagedCount = model.status?.staged.length ?? 0;
 
   const enterCommit = useCallback(() => {
@@ -166,11 +159,7 @@ export function App() {
 
     // 2. Help overlay.
     if (showHelp) {
-      if (
-        isKey(key, "escape") ||
-        key.name === "?" ||
-        (key.name === "/" && key.shift)
-      ) {
+      if (isKey(key, "escape") || key.name === "?" || (key.name === "/" && key.shift)) {
         setShowHelp(false);
       }
       return;
@@ -220,12 +209,10 @@ export function App() {
       }
     } else if (isKey(key, "left") || isKey(key, "h")) {
       if (inHistory) setHistoryFocus("commits");
-      else if (model.selectedKey?.startsWith("dir:"))
-        model.setCollapsed(model.selectedKey, true);
+      else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, true);
     } else if (isKey(key, "right") || isKey(key, "l")) {
       if (inHistory) setHistoryFocus("files");
-      else if (model.selectedKey?.startsWith("dir:"))
-        model.setCollapsed(model.selectedKey, false);
+      else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, false);
     } else if (isKey(key, "a")) {
       if (!inHistory) void model.stageAll();
     } else if (isKey(key, "A")) {
@@ -236,6 +223,10 @@ export function App() {
       if (!inHistory) requestCommit();
     } else if (isKey(key, "M")) {
       if (!inHistory) void startAmend();
+    } else if (isKey(key, "P")) {
+      if (!inHistory) void model.push();
+    } else if (isKey(key, "p")) {
+      if (!inHistory) void model.pull();
     } else if (isKey(key, "e")) {
       if (!inHistory) void openSelectedInEditor();
     } else if (isKey(key, "X")) {
@@ -300,7 +291,6 @@ export function App() {
         repoPath={getGitCwd()}
         changeCount={model.entries.length}
         busy={model.busy}
-        focus={focus}
       />
 
       <box style={{ flexDirection: "row", flexGrow: 1, flexShrink: 1 }}>
@@ -319,10 +309,7 @@ export function App() {
           selectedKey={model.selectedKey}
           files={history.files}
           selectedPath={history.selectedPath}
-          focused={
-            focus === "list" &&
-            (statusTab === "changes" || historyFocus === "files")
-          }
+          focused={focus === "list" && (statusTab === "changes" || historyFocus === "files")}
           width={commitsWidth}
           onSelect={model.select}
           onSelectFile={history.selectFile}
@@ -335,9 +322,7 @@ export function App() {
           ref={diffScrollRef}
           title={diffTitle}
           diff={statusTab === "history" ? history.diff : model.diff}
-          loading={
-            statusTab === "history" ? history.diffLoading : model.diffLoading
-          }
+          loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
           view={diffView}
           showLineNumbers={showLineNumbers}
           wrap={wrapDiff}

@@ -1,11 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import {
-  mkdtempSync,
-  mkdirSync,
-  rmSync,
-  writeFileSync,
-  realpathSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { testRender } from "@opentui/react/test-utils";

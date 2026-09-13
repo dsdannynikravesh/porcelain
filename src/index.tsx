@@ -42,8 +42,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(
-    `gitpretty: ${err instanceof Error ? err.stack : String(err)}\n`,
-  );
+  process.stderr.write(`gitpretty: ${err instanceof Error ? err.stack : String(err)}\n`);
   process.exit(1);
 });

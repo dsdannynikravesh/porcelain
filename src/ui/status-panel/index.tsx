@@ -1,6 +1,6 @@
-import type { TreeRow } from "../../state/tree.js";
 import type { CommitFileEntry } from "../../git/index.js";
-import { theme, BOLD } from "../theme.js";
+import type { TreeRow } from "../../state/tree.js";
+import { BOLD, theme } from "../theme.js";
 import { StatusPanelChanges } from "./changes.js";
 import { CommittedFiles } from "./committed-files.js";
 

@@ -1,8 +1,8 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { DiffRenderable } from "@opentui/core";
-import { theme } from "./theme.js";
-import { syntaxStyle } from "./syntax.js";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { FileDiff } from "../git/index.js";
+import { syntaxStyle } from "./syntax.js";
+import { theme } from "./theme.js";
 
 export interface DiffScrollHandle {
   scrollBy: (delta: number) => void;

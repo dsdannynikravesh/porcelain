@@ -12,9 +12,12 @@
     "dev": "bun run src/index.tsx",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "build": "bash scripts/build.sh"
+    "build": "bash scripts/build.sh",
+    "lint": "biome check .",
+    "format": "biome check --write ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
     "@types/bun": "latest",
     "@types/react": "^19.3.0"
   },

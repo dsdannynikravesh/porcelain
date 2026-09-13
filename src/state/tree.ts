@@ -90,7 +90,13 @@ export function buildTreeRows(
       basename(a.entry.path).localeCompare(basename(b.entry.path)),
     );
     for (const f of files) {
-      rows.push({ type: "file", key: f.key, name: basename(f.entry.path), depth, entry: f });
+      rows.push({
+        type: "file",
+        key: f.key,
+        name: basename(f.entry.path),
+        depth,
+        entry: f,
+      });
     }
   };
 

@@ -1,6 +1,6 @@
-import { forwardRef, useImperativeHandle, useRef } from "react";
 import type { TextareaRenderable } from "@opentui/core";
-import { theme, BOLD } from "./theme.js";
+import { forwardRef, useImperativeHandle, useRef } from "react";
+import { BOLD, theme } from "./theme.js";
 
 export interface CommitBoxHandle {
   getText: () => string;
@@ -54,7 +54,12 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
         style={{ flexGrow: 1 }}
       />
       <box style={{ flexDirection: "row", height: 1, paddingLeft: 1 }}>
-        <text style={{ fg: amend ? theme.warn : theme.faint, attributes: amend ? BOLD : 0 }}>
+        <text
+          style={{
+            fg: amend ? theme.warn : theme.faint,
+            attributes: amend ? BOLD : 0,
+          }}
+        >
           {hint}
         </text>
       </box>
