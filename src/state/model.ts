@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { generateCommitMessage as generateCommitMessageViaCopilot } from "../copilot/index.js";
 import { browse as gHBrowse } from "../gh/index.js";
 import {
   type BinarySizeSides,
@@ -7,10 +8,12 @@ import {
   type Contributor,
   diffDirTracked,
   diffFile,
+  diffStaged,
   discardFile,
   type FetchOutcome,
   type FileDiff,
   type FileEntry,
+  getGitCwd,
   getRepoState,
   abortMerge as gitAbortMerge,
   abortRebase as gitAbortRebase,
@@ -130,6 +133,12 @@ export interface RepoModel {
   unstageAll: () => Promise<void>;
   discardSelected: () => Promise<void>;
   commit: (message: string, amend: boolean) => Promise<CommitOutcome>;
+  /** True while a Copilot commit-message request is in flight. */
+  generatingCommitMessage: boolean;
+  /** Generates a title/description from the staged diff via `gh copilot` —
+   *  null on failure (a toast is already shown), otherwise the pair to fill
+   *  the commit box with. */
+  generateCommitMessage: () => Promise<{ title: string; description: string } | null>;
   /** Combine every commit from HEAD back through `baseSha` (inclusive) into one. */
   squash: (baseSha: string, message: string) => Promise<SquashOutcome>;
   push: (opts?: PushOptions) => Promise<PushOutcome>;
@@ -177,6 +186,16 @@ function buildEntries(s: RepoStatus): SelectableEntry[] {
 
 const dirPathOf = (key: string) => (key.startsWith("dir:") ? key.slice(4) : null);
 
+/** A cheap stand-in for "has anything about this entry that a diff/size
+ *  fetch would care about actually changed" — status() rebuilds `entries`
+ *  from scratch on every refresh (new object references throughout, even
+ *  when nothing changed), and a background refresh happens far more often
+ *  than the selection does (any file watcher event, not just user action).
+ *  Depending on this string instead of the array/entry itself lets React
+ *  skip re-fetching when a refresh was a no-op for the selected file. */
+const entrySignature = (e: SelectableEntry): string =>
+  `${e.key}:${e.entry.x}${e.entry.y}:${e.entry.origPath ?? ""}`;
+
 export function useRepoModel(): RepoModel {
   const [repoStatus, setRepoStatus] = useState<RepoStatus | null>(null);
   const [repoState, setRepoState] = useState<RepoState>("clean");
@@ -191,6 +210,7 @@ export function useRepoModel(): RepoModel {
   const [folderDiffsLoading, setFolderDiffsLoading] = useState(false);
   const [selectedHunkIndex, setSelectedHunkIndexState] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [generatingCommitMessage, setGeneratingCommitMessage] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -200,6 +220,10 @@ export function useRepoModel(): RepoModel {
   const [reflog, setReflog] = useState<ReflogEntry[]>([]);
 
   const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
+  const selectedSignature = useMemo(() => {
+    const e = entries.find((e) => e.key === selectedKey);
+    return e ? entrySignature(e) : null;
+  }, [entries, selectedKey]);
 
   const selectedKeyRef = useRef<string | null>(null);
   selectedKeyRef.current = selectedKey;
@@ -264,9 +288,11 @@ export function useRepoModel(): RepoModel {
     }
   }, []);
 
-  // Load the diff for the current selection (files only) whenever it changes.
+  // Load the diff for the current selection (files only) whenever it
+  // actually changes — keyed on `selectedSignature` rather than `entries`
+  // (see its comment) so an unrelated background refresh doesn't redo this.
   useEffect(() => {
-    const current = entries.find((e) => e.key === selectedKey) ?? null;
+    const current = entriesRef.current.find((e) => e.key === selectedKeyRef.current) ?? null;
     if (!current) {
       setDiff(null);
       return;
@@ -289,13 +315,14 @@ export function useRepoModel(): RepoModel {
       .finally(() => {
         if (diffReqRef.current === reqId) setDiffLoading(false);
       });
-  }, [selectedKey, entries]);
+  }, [selectedSignature]);
 
   // Byte size of both sides of the same selection, whenever it's binary —
-  // waits on `diff` (rather than re-deriving "is this binary" itself) so it
-  // agrees with what the panel is actually showing.
+  // gated on `diff.binary` specifically (not the whole `diff` object) so it
+  // agrees with what the panel is actually showing without re-running for
+  // every diff refetch that leaves that flag unchanged.
   useEffect(() => {
-    const current = entries.find((e) => e.key === selectedKey) ?? null;
+    const current = entriesRef.current.find((e) => e.key === selectedKeyRef.current) ?? null;
     if (!current || !diff?.binary) {
       setBinarySize(null);
       return;
@@ -312,21 +339,40 @@ export function useRepoModel(): RepoModel {
       .finally(() => {
         if (binarySizeReqRef.current === reqId) setBinarySizeLoading(false);
       });
-  }, [selectedKey, entries, diff]);
+  }, [selectedSignature, diff?.binary]);
 
   // Load every changed file's diff under a selected directory, stacked —
   // lazygit-style. Tracked files come back in two batched `git diff` calls
   // (one per section) instead of one call per file; untracked ones still
   // need their own `--no-index` synthesis, same as the single-file path.
+  const folderDirPath = selectedKey ? dirPathOf(selectedKey) : null;
+  const folderDescendants = useMemo(
+    () =>
+      folderDirPath
+        ? entries.filter(
+            (e) => e.entry.path === folderDirPath || e.entry.path.startsWith(`${folderDirPath}/`),
+          )
+        : [],
+    [entries, folderDirPath],
+  );
+  // Same idea as `selectedSignature`, folded over the whole descendant set —
+  // an edit anywhere outside this directory still gives `entries` a new
+  // reference, and shouldn't redo every file's diff in it.
+  const folderSignature = folderDirPath
+    ? `${folderDirPath}::${folderDescendants.map(entrySignature).join("|")}`
+    : null;
+  const folderDescendantsRef = useRef<SelectableEntry[]>([]);
+  folderDescendantsRef.current = folderDescendants;
+  const folderDirPathRef = useRef<string | null>(null);
+  folderDirPathRef.current = folderDirPath;
+
   useEffect(() => {
-    const dirPath = selectedKey ? dirPathOf(selectedKey) : null;
+    const dirPath = folderDirPathRef.current;
     if (!dirPath) {
       setFolderDiffs([]);
       return;
     }
-    const descendants = entries.filter(
-      (e) => e.entry.path === dirPath || e.entry.path.startsWith(`${dirPath}/`),
-    );
+    const descendants = folderDescendantsRef.current;
     const reqId = ++folderDiffReqRef.current;
     setFolderDiffsLoading(true);
     void (async () => {
@@ -363,7 +409,7 @@ export function useRepoModel(): RepoModel {
         if (folderDiffReqRef.current === reqId) setFolderDiffsLoading(false);
       }
     })();
-  }, [selectedKey, entries]);
+  }, [folderSignature]);
 
   // Hunks of whatever diff is currently shown — never for a conflicted file
   // (its diff isn't a normal two-way patch, so hunk staging doesn't apply;
@@ -552,6 +598,28 @@ export function useRepoModel(): RepoModel {
     },
     [refresh],
   );
+
+  const generateCommitMessage = useCallback(async (): Promise<{
+    title: string;
+    description: string;
+  } | null> => {
+    if (!repoStatus || repoStatus.staged.length === 0) {
+      setToast({ kind: "err", text: "Stage some changes first — Copilot only sees staged files." });
+      return null;
+    }
+    setGeneratingCommitMessage(true);
+    try {
+      const diff = await diffStaged();
+      const outcome = await generateCommitMessageViaCopilot(diff, { cwd: getGitCwd() });
+      if (!outcome.ok) {
+        setToast({ kind: "err", text: outcome.message });
+        return null;
+      }
+      return { title: outcome.title, description: outcome.description };
+    } finally {
+      setGeneratingCommitMessage(false);
+    }
+  }, [repoStatus]);
 
   const squash = useCallback(
     async (baseSha: string, message: string): Promise<SquashOutcome> => {
@@ -921,6 +989,8 @@ export function useRepoModel(): RepoModel {
     unstageAll,
     discardSelected,
     commit,
+    generatingCommitMessage,
+    generateCommitMessage,
     squash,
     push,
     pull,

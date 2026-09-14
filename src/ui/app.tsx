@@ -7,7 +7,7 @@ import { useRepoModel } from "../state/model.js";
 import { useRepoWatch } from "../state/watch.js";
 import { BranchPicker } from "./branch-picker.js";
 import { CoAuthorPicker } from "./co-author-picker.js";
-import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
+import { CommitBox, type CommitBoxHandle, type CommitField } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
 import { ConflictBanner } from "./conflict-banner.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
@@ -47,6 +47,8 @@ export function App() {
   const [statusTab, setStatusTab] = useState<StatusTab>("changes");
   const [historyFocus, setHistoryFocus] = useState<HistoryFocus>("commits");
   const [amend, setAmend] = useState(false);
+  /** Which of the commit box's two fields has keyboard focus, while `focus === "commit"`. */
+  const [commitField, setCommitField] = useState<CommitField>("summary");
   /** Set while squashing: the oldest commit being folded in, and how many total. */
   const [squash, setSquash] = useState<{ baseSha: string; count: number } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
@@ -96,6 +98,7 @@ export function App() {
   const stagedCount = model.status?.staged.length ?? 0;
 
   const enterCommit = useCallback(() => {
+    setCommitField("summary");
     setFocus("commit");
   }, []);
 
@@ -104,8 +107,16 @@ export function App() {
     setAmend(false);
     setSquash(null);
     setCoAuthors(new Set());
+    setCommitField("summary");
     commitRef.current?.clear();
   }, []);
+
+  const runGenerate = useCallback(() => {
+    void (async () => {
+      const result = await model.generateCommitMessage();
+      if (result) commitRef.current?.setGenerated(result.title, result.description);
+    })();
+  }, [model]);
 
   const doCommit = useCallback(async () => {
     const message = commitRef.current?.getText() ?? "";
@@ -141,6 +152,7 @@ export function App() {
     const prev = await lastCommitMessage();
     commitRef.current?.setText(prev);
     setAmend(true);
+    setCommitField("summary");
     setFocus("commit");
   }, []);
 
@@ -163,6 +175,7 @@ export function App() {
       .join("\n");
     commitRef.current?.setText(message);
     setSquash({ baseSha: history.selectedSha!, count: range.length });
+    setCommitField("summary");
     setFocus("commit");
   }, [history, model]);
 
@@ -472,7 +485,7 @@ export function App() {
         setShowCoAuthors(false);
       } else if (key.name === "return") {
         setShowCoAuthors(false);
-        setFocus("commit");
+        enterCommit();
       } else if (isKey(key, "j") || isKey(key, "down")) {
         setCoAuthorIndex((i) => Math.min(i + 1, model.contributors.length - 1));
       } else if (isKey(key, "k") || isKey(key, "up")) {
@@ -491,17 +504,34 @@ export function App() {
       return;
     }
 
-    // 8. Commit editor mode — let the textarea have the keys, only intercept a few.
+    // 8. Commit editor mode — let the summary/description fields have the
+    // keys, only intercept a few. Tab steps forward through summary ->
+    // description -> back to the list (leaving the box); Shift+Tab steps
+    // the same sequence in reverse.
     if (focus === "commit") {
       if (isKey(key, "escape")) {
         cancelCommit();
-      } else if (key.name === "return" && !key.shift && !key.ctrl) {
+      } else if (key.name === "g" && key.ctrl) {
+        runGenerate();
+      } else if (key.name === "return" && key.ctrl) {
+        // Commits from either field — the description needs this since its
+        // own plain Enter means "newline", not "submit".
         if (squash) requestSquash();
+        else requestCommit();
+      } else if (key.name === "return" && !key.shift && !key.ctrl) {
+        if (commitField === "description") commitRef.current?.insertNewline();
+        else if (squash) requestSquash();
         else requestCommit();
       } else if (key.name === "return" && key.shift) {
         commitRef.current?.insertNewline();
-      } else if (isKey(key, "tab")) {
-        setFocus("list");
+      } else if (key.name === "tab" && !key.shift) {
+        key.preventDefault();
+        if (commitField === "summary") setCommitField("description");
+        else setFocus("list");
+      } else if (key.name === "tab" && key.shift) {
+        key.preventDefault();
+        if (commitField === "description") setCommitField("summary");
+        else setFocus("list");
       }
       return;
     }
@@ -582,7 +612,7 @@ export function App() {
       void model.refresh();
       void history.refresh();
     } else if (isKey(key, "tab")) {
-      setFocus("commit");
+      enterCommit();
     } else if (isKey(key, "t")) {
       setStatusTab((t) => (t === "changes" ? "history" : "changes"));
       setHistoryFocus("commits");
@@ -713,10 +743,13 @@ export function App() {
       <CommitBox
         ref={commitRef}
         focused={focus === "commit"}
+        field={commitField}
         amend={amend}
         squashCount={squash?.count}
         stagedCount={stagedCount}
         coAuthors={pickedCoAuthors}
+        generating={model.generatingCommitMessage}
+        onGenerate={runGenerate}
       />
 
       <HelpFooter expanded={false} />

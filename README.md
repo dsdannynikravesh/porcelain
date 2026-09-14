@@ -31,8 +31,14 @@ inspiration.
   highlighting, line numbers, and word wrap toggles
 - **Hunk-level staging** — stage or unstage a single hunk out of a file, not
   just the whole thing
-- **Commit** (with co-authors, amend, and squash), **push / pull / fetch**
-  (including `--force-with-lease`)
+- **Commit** (summary + description, co-authors, amend, and squash),
+  **push / pull / fetch** (including `--force-with-lease`)
+- **AI-generated commit messages** — `Ctrl+G` in the commit box asks GitHub
+  Copilot (via `gh copilot`) to summarize your *staged* diff into a title and
+  description, GitHub Desktop–style; edit or clear whatever it writes before
+  committing. Requires the `gh` CLI, the `gh-copilot` extension, and an
+  active Copilot subscription — everything else falls back to a normal
+  two-field commit box if it's missing
 - **Branches** — switch, create, delete, and merge, with remote-tracking
   branches shown alongside locals (checking one out creates its local branch
   automatically, same as `git switch <name>`'s own DWIM behavior)
@@ -104,7 +110,10 @@ publish them as GitHub Release assets.
 | `a` / `A` | stage all / unstage all                              |
 | `c`       | jump to the commit message                           |
 | `C`       | pick co-authors (before writing the message)         |
-| `Enter`   | commit (`Shift+Enter` for a new line)                |
+| `Enter`   | commit (a new line, while in the description)        |
+| `Tab`     | switch summary ⇄ description, in the commit box      |
+| `Ctrl+Enter` | commit from either field                          |
+| `Ctrl+G`  | generate a commit message with Copilot               |
 | `M`       | amend the last commit                                |
 | `p` / `P` | pull / push                                          |
 | `F`       | force push (`--force-with-lease`)                    |

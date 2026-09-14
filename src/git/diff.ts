@@ -109,6 +109,14 @@ export async function diffFile(entry: FileEntry, staged: boolean): Promise<FileD
   return patchToFileDiff(patch, filetype);
 }
 
+/** The full staged diff (index vs HEAD) across every staged file, in one
+ *  call — raw text, not turned into a `FileDiff`, since the only consumer
+ *  (the Copilot commit-message prompt) wants the whole multi-file patch. */
+export async function diffStaged(): Promise<string> {
+  const res = await runGit(["diff", "--staged", "--no-color"]);
+  return res.stdout;
+}
+
 /**
  * Split a multi-file unified diff (as `git diff` emits for a directory
  * pathspec — every file's patch back to back) into one raw patch per file,

@@ -101,17 +101,21 @@ export function StatusPanelChanges({
   onSelect,
   onActivate,
 }: Props) {
+  if (rows.length === 0) {
+    // Centered like the diff panel's own "Nothing to show" — a quiet
+    // dashboard state, not a message pinned to the top-left corner.
+    return (
+      <box style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}>
+        <text style={{ fg: theme.faint }}>Nothing to commit — working tree clean.</text>
+      </box>
+    );
+  }
+
   return (
     <scrollbox
       focused={focused}
       style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
     >
-      {rows.length === 0 ? (
-        <box style={{ padding: 1 }}>
-          <text style={{ fg: theme.faint }}>Nothing to commit — working tree clean.</text>
-        </box>
-      ) : null}
-
       {rows.map((row, i) => {
         const prev = rows[i - 1];
         const pairedStaged =

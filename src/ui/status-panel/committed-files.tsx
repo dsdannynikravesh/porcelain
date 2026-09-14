@@ -60,17 +60,21 @@ function RowView({
 }
 
 export function CommittedFiles({ files, selectedPath, focused, width, onSelect }: Props) {
+  if (files.length === 0) {
+    // Centered like the diff panel's own "Nothing to show" — a quiet
+    // dashboard state, not a message pinned to the top-left corner.
+    return (
+      <box style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}>
+        <text style={{ fg: theme.faint }}>No files in this commit.</text>
+      </box>
+    );
+  }
+
   return (
     <scrollbox
       focused={focused}
       style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
     >
-      {files.length === 0 ? (
-        <box style={{ padding: 1 }}>
-          <text style={{ fg: theme.faint }}>No files in this commit.</text>
-        </box>
-      ) : null}
-
       {files.map((f) => (
         <RowView
           key={f.path}

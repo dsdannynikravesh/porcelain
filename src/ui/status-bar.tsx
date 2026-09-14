@@ -21,7 +21,7 @@ function truncate(s: string, max: number): string {
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 /** Cycles a braille spinner frame on an interval while `active`; no timer at all when idle. */
-function useSpinner(active: boolean): string {
+export function useSpinner(active: boolean): string {
   const [frame, setFrame] = useState(0);
   useEffect(() => {
     if (!active) return;
