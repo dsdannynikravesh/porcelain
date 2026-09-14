@@ -97,12 +97,8 @@ export function StatusPanelChanges({
       style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
     >
       {rows.length === 0 ? (
-        <box style={{ padding: 1, flexDirection: "column", gap: 1 }}>
+        <box style={{ padding: 1 }}>
           <text style={{ fg: theme.faint }}>Nothing to commit — working tree clean.</text>
-          <box style={{ flexDirection: "row" }}>
-            <text style={{ fg: theme.accent, attributes: BOLD }}>o</text>
-            <text style={{ fg: theme.faint }}>{"  view this repo on GitHub"}</text>
-          </box>
         </box>
       ) : null}
 

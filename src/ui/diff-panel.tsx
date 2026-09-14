@@ -2,7 +2,7 @@ import type { DiffRenderable } from "@opentui/core";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { FileDiff } from "../git/index.js";
 import { syntaxStyle } from "./syntax.js";
-import { theme } from "./theme.js";
+import { BOLD, theme } from "./theme.js";
 
 export interface DiffScrollHandle {
   scrollBy: (delta: number) => void;
@@ -73,7 +73,15 @@ export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
 
   let body: React.ReactNode;
   if (!title) {
-    body = <Message>Select a file to see its diff.</Message>;
+    body = (
+      <box style={{ padding: 1, flexDirection: "column", gap: 1 }}>
+        <text style={{ fg: theme.faint }}>Select a file to see its diff.</text>
+        <box style={{ flexDirection: "row" }}>
+          <text style={{ fg: theme.accent, attributes: BOLD }}>o</text>
+          <text style={{ fg: theme.faint }}>{"  view this repo on GitHub"}</text>
+        </box>
+      </box>
+    );
   } else if (loading && !diff) {
     body = <Message>Loading diff…</Message>;
   } else if (diff?.binary) {

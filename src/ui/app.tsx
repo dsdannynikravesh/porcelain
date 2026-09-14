@@ -579,25 +579,16 @@ export function App() {
           }}
         />
 
-        {model.rows.length === 0 ? (
-          <box
-            style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}
-            width={diffWidth}
-          >
-            <text style={{ fg: theme.faint }}>No changes to show</text>
-          </box>
-        ) : (
-          <DiffPanel
-            ref={diffScrollRef}
-            title={diffTitle}
-            diff={statusTab === "history" ? history.diff : model.diff}
-            loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
-            view={diffView}
-            showLineNumbers={showLineNumbers}
-            wrap={wrapDiff}
-            width={diffWidth}
-          />
-        )}
+        <DiffPanel
+          ref={diffScrollRef}
+          title={diffTitle}
+          diff={statusTab === "history" ? history.diff : model.diff}
+          loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
+          view={diffView}
+          showLineNumbers={showLineNumbers}
+          wrap={wrapDiff}
+          width={diffWidth}
+        />
       </box>
 
       <CommitBox
