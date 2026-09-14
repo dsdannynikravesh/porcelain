@@ -688,6 +688,7 @@ export function App() {
         {statusTab === "history" ? (
           <StatusPanelCommits
             commits={history.commits}
+            loadingMore={history.loadingMore}
             selectedSha={history.selectedSha}
             focused={focus === "list" && historyFocus === "commits"}
             width={commitsWidth}

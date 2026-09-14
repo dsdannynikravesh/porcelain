@@ -3,11 +3,14 @@
 // Selecting a commit here drives what status-panel/index.tsx's "Files" list
 // and the DiffPanel show next to it.
 
+import type { ScrollBoxRenderable } from "@opentui/core";
+import { useEffect, useRef } from "react";
 import type { CommitEntry } from "../../git/index.js";
 import { BOLD, theme } from "../theme.js";
 
 interface Props {
   commits: CommitEntry[];
+  loadingMore: boolean;
   selectedSha: string | null;
   focused: boolean;
   width: number;
@@ -40,6 +43,7 @@ function CommitRowView({
 
   return (
     <box
+      id={`commit-${commit.sha}`}
       onMouseDown={(e) => {
         if (e.button === 0) onSelect?.(commit.sha);
       }}
@@ -57,7 +61,20 @@ function CommitRowView({
   );
 }
 
-export function StatusPanelCommits({ commits, selectedSha, focused, width, onSelect }: Props) {
+export function StatusPanelCommits({
+  commits,
+  loadingMore,
+  selectedSha,
+  focused,
+  width,
+  onSelect,
+}: Props) {
+  const scrollboxRef = useRef<ScrollBoxRenderable>(null);
+
+  useEffect(() => {
+    if (selectedSha) scrollboxRef.current?.scrollChildIntoView(`commit-${selectedSha}`);
+  }, [selectedSha]);
+
   return (
     <box
       title=" History "
@@ -72,10 +89,13 @@ export function StatusPanelCommits({ commits, selectedSha, focused, width, onSel
     >
       <box style={{ flexDirection: "row", height: 1, paddingLeft: 1 }}>
         <text style={{ fg: theme.dim, attributes: BOLD }}>COMMITS</text>
-        <text style={{ fg: theme.faint }}>{`  ${commits.length}`}</text>
+        <text style={{ fg: theme.faint }}>
+          {loadingMore ? `  ${commits.length}…` : `  ${commits.length}`}
+        </text>
       </box>
 
       <scrollbox
+        ref={scrollboxRef}
         focused={focused}
         style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
       >

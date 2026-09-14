@@ -15,9 +15,11 @@ export interface CommitEntry {
 const FIELD_SEP = "\x1f";
 const RECORD_SEP = "\x1e";
 
-export async function listCommits(limit = 300): Promise<CommitEntry[]> {
+/** Read one page of commits. `skip` is the history cursor for the next page. */
+export async function listCommits(limit = 100, skip = 0): Promise<CommitEntry[]> {
   const raw = await runGitOrThrow([
     "log",
+    `--skip=${skip}`,
     `--max-count=${limit}`,
     "--date=short",
     `--pretty=format:%H${FIELD_SEP}%h${FIELD_SEP}%an${FIELD_SEP}%ad${FIELD_SEP}%s${RECORD_SEP}`,

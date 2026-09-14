@@ -19,6 +19,7 @@ import {
 export interface HistoryModel {
   commits: CommitEntry[];
   loading: boolean;
+  loadingMore: boolean;
   error: string | null;
   selectedSha: string | null;
   selectCommit: (sha: string) => void;
@@ -37,8 +38,10 @@ export interface HistoryModel {
 }
 
 export function useCommitHistory(): HistoryModel {
+  const PAGE_SIZE = 100;
   const [commits, setCommits] = useState<CommitEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
 
@@ -60,10 +63,15 @@ export function useCommitHistory(): HistoryModel {
 
   const filesReqRef = useRef(0);
   const diffReqRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(true);
+  const nextSkipRef = useRef(0);
 
   const refresh = useCallback(async () => {
     try {
-      const list = await listCommits();
+      const list = await listCommits(PAGE_SIZE, 0);
+      nextSkipRef.current = list.length;
+      hasMoreRef.current = list.length === PAGE_SIZE;
       setCommits(list);
       setError(null);
       // Keep the current selection if it's still around, otherwise land on HEAD.
@@ -139,7 +147,36 @@ export function useCommitHistory(): HistoryModel {
       const idx = list.findIndex((c) => c.sha === selectedShaRef.current);
       const nextIdx = Math.min(Math.max((idx < 0 ? 0 : idx) + delta, 0), list.length - 1);
       const next = list[nextIdx];
-      if (next) selectCommit(next.sha);
+      if (next && nextIdx !== list.length - 1) {
+        selectCommit(next.sha);
+        return;
+      }
+
+      // At the end of the loaded page, fetch the next page before moving on.
+      // This keeps navigation one commit at a time without loading the entire
+      // repository history up front.
+      if (delta > 0 && nextIdx === list.length - 1 && hasMoreRef.current) {
+        if (loadingMoreRef.current) return;
+        loadingMoreRef.current = true;
+        setLoadingMore(true);
+        void listCommits(PAGE_SIZE, nextSkipRef.current)
+          .then((more) => {
+            nextSkipRef.current += more.length;
+            hasMoreRef.current = more.length === PAGE_SIZE;
+            if (more.length === 0) return;
+            setCommits((prev) => [...prev, ...more]);
+            selectCommit(more[0]!.sha);
+          })
+          .catch((err) => {
+            setError(err instanceof Error ? err.message : String(err));
+          })
+          .finally(() => {
+            loadingMoreRef.current = false;
+            setLoadingMore(false);
+          });
+      } else if (next) {
+        selectCommit(next.sha);
+      }
     },
     [selectCommit],
   );
@@ -164,6 +201,7 @@ export function useCommitHistory(): HistoryModel {
   return {
     commits,
     loading,
+    loadingMore,
     error,
     selectedSha,
     selectCommit,
