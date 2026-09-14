@@ -61,21 +61,13 @@ registered for them — see `src/ui/syntax.ts`.
 
 ```bash
 git clone https://github.com/dsdannynikravesh/porcelain.git
-bun add --global file:./porcelain
+cd porcelain
+bun install
+bun start
 ```
 
-That installs both the `porcelain` and `por` commands. If your shell can't
-find them afterward, Bun's global bin folder isn't on your `$PATH` yet — add
-it (Bun prints the exact line to add, typically `~/.bun/bin`).
-
-From then on, run `porcelain` (or the shorter `por`) from inside any git repo.
-
-Prefer not to install anything? Run it straight from a clone without
-installing:
-
-```bash
-cd porcelain && bun install && bun start
-```
+This runs the app directly from the clone. To install a standalone
+`porcelain` command that works without Bun at runtime, build the binary below.
 
 ### Standalone binary
 
@@ -86,12 +78,29 @@ self-contained executable for your current OS/arch:
 bun run build      # writes dist/porcelain-<host-os>-<arch>
 ```
 
-Move the result onto your `$PATH` (e.g. `/usr/local/bin/porcelain`), and
+Move the result into your user-local `$PATH` (no `sudo` required), and
 optionally symlink `por` alongside it:
 
 ```bash
-sudo mv dist/porcelain-* /usr/local/bin/porcelain
-sudo ln -s /usr/local/bin/porcelain /usr/local/bin/por
+mkdir -p "$HOME/.local/bin"
+cp dist/porcelain-* "$HOME/.local/bin/porcelain"
+chmod +x "$HOME/.local/bin/porcelain"
+ln -sf porcelain "$HOME/.local/bin/por"
+```
+
+To make it available to every user on the machine, install it system-wide
+instead:
+
+```bash
+sudo install -Dm755 dist/porcelain-* /usr/local/bin/porcelain
+sudo ln -sfn /usr/local/bin/porcelain /usr/local/bin/por
+```
+
+If `~/.local/bin` is not already on your `$PATH`, add it in your shell profile:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
+source "$HOME/.zshrc"
 ```
 
 `bun run build` compiles for the **host platform only** — OpenTUI's Zig
