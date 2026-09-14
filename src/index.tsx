@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
+import { setGHCwd } from "./gh/index.js";
 import { findRepoRoot, setGitCwd } from "./git/index.js";
 import { App } from "./ui/app.js";
 
@@ -17,6 +18,7 @@ async function main() {
   }
 
   setGitCwd(root);
+  setGHCwd(root);
 
   const renderer = await createCliRenderer({
     // Ctrl+C is handled at OpenTUI's input layer (calls renderer.destroy()), so

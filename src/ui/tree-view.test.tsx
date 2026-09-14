@@ -35,8 +35,9 @@ test("directory rows collapse and expand from the keyboard", async () => {
   await t.waitForFrame((f) => f.includes("A.tsx") && f.includes("src/ui"));
   expect(t.captureCharFrame()).toContain("B.tsx");
 
-  // First row is the "src/ui" directory; collapse it with `h`.
-  t.mockInput.pressKey("h");
+  // First row is the "src/ui" directory; collapse it with the left arrow
+  // ("h" now toggles the history tab instead of doubling as dir-collapse).
+  t.mockInput.pressArrow("left");
   await t.waitForFrame((f) => !f.includes("A.tsx"));
   const collapsed = t.captureCharFrame();
   expect(collapsed).not.toContain("A.tsx");

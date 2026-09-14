@@ -1,11 +1,12 @@
 import type { KeyEvent } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getGitCwd, lastCommitMessage } from "../git/index.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getGitCwd, lastCommitMessage, withCoAuthors } from "../git/index.js";
 import { useCommitHistory } from "../state/history.js";
 import { useRepoModel } from "../state/model.js";
 import { useRepoWatch } from "../state/watch.js";
 import { BranchPicker } from "./branch-picker.js";
+import { CoAuthorPicker } from "./co-author-picker.js";
 import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
@@ -55,6 +56,14 @@ export function App() {
   const [showNewBranch, setShowNewBranch] = useState(false);
   const [showStash, setShowStash] = useState(false);
   const [stashIndex, setStashIndex] = useState(0);
+  const [showCoAuthors, setShowCoAuthors] = useState(false);
+  const [coAuthorIndex, setCoAuthorIndex] = useState(0);
+  /** Emails checked for the commit currently being composed. */
+  const [coAuthors, setCoAuthors] = useState<ReadonlySet<string>>(new Set());
+  const pickedCoAuthors = useMemo(
+    () => model.contributors.filter((c) => coAuthors.has(c.email)),
+    [model.contributors, coAuthors],
+  );
 
   const commitRef = useRef<CommitBoxHandle>(null);
   const newBranchRef = useRef<NewBranchPromptHandle>(null);
@@ -89,6 +98,7 @@ export function App() {
     setFocus("list");
     setAmend(false);
     setSquash(null);
+    setCoAuthors(new Set());
     commitRef.current?.clear();
   }, []);
 
@@ -98,13 +108,14 @@ export function App() {
       model.setToast({ kind: "err", text: "Write a commit message first" });
       return;
     }
-    const outcome = await model.commit(message, amend);
+    const outcome = await model.commit(withCoAuthors(message, pickedCoAuthors), amend);
     if (outcome.ok) {
       commitRef.current?.clear();
       setAmend(false);
+      setCoAuthors(new Set());
       setFocus("list");
     }
-  }, [amend, model]);
+  }, [amend, model, pickedCoAuthors]);
 
   const requestCommit = useCallback(() => {
     if (amend) {
@@ -157,14 +168,15 @@ export function App() {
       model.setToast({ kind: "err", text: "Write a commit message first" });
       return;
     }
-    const outcome = await model.squash(squash.baseSha, message);
+    const outcome = await model.squash(squash.baseSha, withCoAuthors(message, pickedCoAuthors));
     if (outcome.ok) {
       commitRef.current?.clear();
       setSquash(null);
+      setCoAuthors(new Set());
       setFocus("list");
       void history.refresh();
     }
-  }, [squash, model, history]);
+  }, [squash, model, history, pickedCoAuthors]);
 
   const requestSquash = useCallback(() => {
     if (!squash) return;
@@ -236,6 +248,12 @@ export function App() {
     setShowStash(true);
     setStashIndex(0);
     void model.loadStashes();
+  }, [model]);
+
+  const openCoAuthorPicker = useCallback(() => {
+    setShowCoAuthors(true);
+    setCoAuthorIndex(0);
+    void model.loadContributors();
   }, [model]);
 
   const requestStashDrop = useCallback(() => {
@@ -366,7 +384,34 @@ export function App() {
       return;
     }
 
-    // 6. Commit editor mode — let the textarea have the keys, only intercept a few.
+    // 6. Co-author picker owns all input while open (opened from list mode
+    // via "C" — see priority 8 below. Not opened from inside the commit box:
+    // any key safe to intercept there would also just type into the message).
+    if (showCoAuthors) {
+      if (isKey(key, "escape")) {
+        setShowCoAuthors(false);
+      } else if (key.name === "return") {
+        setShowCoAuthors(false);
+        setFocus("commit");
+      } else if (isKey(key, "j") || isKey(key, "down")) {
+        setCoAuthorIndex((i) => Math.min(i + 1, model.contributors.length - 1));
+      } else if (isKey(key, "k") || isKey(key, "up")) {
+        setCoAuthorIndex((i) => Math.max(i - 1, 0));
+      } else if (isKey(key, "space")) {
+        const c = model.contributors[coAuthorIndex];
+        if (c) {
+          setCoAuthors((prev) => {
+            const next = new Set(prev);
+            if (next.has(c.email)) next.delete(c.email);
+            else next.add(c.email);
+            return next;
+          });
+        }
+      }
+      return;
+    }
+
+    // 7. Commit editor mode — let the textarea have the keys, only intercept a few.
     if (focus === "commit") {
       if (isKey(key, "escape")) {
         cancelCommit();
@@ -383,7 +428,7 @@ export function App() {
 
     const inHistory = statusTab === "history";
 
-    // 7. List mode.
+    // 8. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
     } else if (isKey(key, "q")) {
@@ -411,7 +456,7 @@ export function App() {
       } else {
         void model.toggleStage();
       }
-    } else if (isKey(key, "left") || isKey(key, "h")) {
+    } else if (isKey(key, "left")) {
       if (inHistory) setHistoryFocus("commits");
       else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, true);
     } else if (isKey(key, "right") || isKey(key, "l")) {
@@ -423,6 +468,8 @@ export function App() {
       if (!inHistory) void model.unstageAll();
     } else if (isKey(key, "c")) {
       if (!inHistory) enterCommit();
+    } else if (isKey(key, "C")) {
+      if (!inHistory) openCoAuthorPicker();
     } else if (isKey(key, "M")) {
       if (!inHistory) void startAmend();
     } else if (isKey(key, "P")) {
@@ -450,7 +497,7 @@ export function App() {
       void history.refresh();
     } else if (isKey(key, "tab")) {
       setFocus("commit");
-    } else if (isKey(key, "t")) {
+    } else if (isKey(key, "h")) {
       setStatusTab((t) => (t === "changes" ? "history" : "changes"));
       setHistoryFocus("commits");
     } else if (isKey(key, "b")) {
@@ -459,6 +506,8 @@ export function App() {
       openStashPicker();
     } else if (isKey(key, "S")) {
       if (inHistory && historyFocus === "commits") startSquash();
+    } else if (isKey(key, "o")) {
+      void model.browse();
     }
   });
 
@@ -529,16 +578,26 @@ export function App() {
             else void model.toggleStage();
           }}
         />
-        <DiffPanel
-          ref={diffScrollRef}
-          title={diffTitle}
-          diff={statusTab === "history" ? history.diff : model.diff}
-          loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
-          view={diffView}
-          showLineNumbers={showLineNumbers}
-          wrap={wrapDiff}
-          width={diffWidth}
-        />
+
+        {model.rows.length === 0 ? (
+          <box
+            style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}
+            width={diffWidth}
+          >
+            <text style={{ fg: theme.faint }}>No changes to show</text>
+          </box>
+        ) : (
+          <DiffPanel
+            ref={diffScrollRef}
+            title={diffTitle}
+            diff={statusTab === "history" ? history.diff : model.diff}
+            loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
+            view={diffView}
+            showLineNumbers={showLineNumbers}
+            wrap={wrapDiff}
+            width={diffWidth}
+          />
+        )}
       </box>
 
       <CommitBox
@@ -547,6 +606,7 @@ export function App() {
         amend={amend}
         squashCount={squash?.count}
         stagedCount={stagedCount}
+        coAuthors={pickedCoAuthors}
       />
 
       <HelpFooter expanded={false} />
@@ -579,6 +639,13 @@ export function App() {
           stashes={model.stashes}
           selectedIndex={stashIndex}
           canStash={model.entries.length > 0}
+        />
+      ) : null}
+      {showCoAuthors ? (
+        <CoAuthorPicker
+          contributors={model.contributors}
+          selectedIndex={coAuthorIndex}
+          checked={coAuthors}
         />
       ) : null}
     </box>

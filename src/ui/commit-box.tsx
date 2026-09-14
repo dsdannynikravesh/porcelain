@@ -1,5 +1,6 @@
 import type { TextareaRenderable } from "@opentui/core";
 import { forwardRef, useImperativeHandle, useRef } from "react";
+import type { Contributor } from "../git/index.js";
 import { BOLD, theme } from "./theme.js";
 
 export interface CommitBoxHandle {
@@ -18,14 +19,34 @@ interface Props {
   /** Set (to the number of commits involved) while squashing history into one. */
   squashCount?: number;
   stagedCount: number;
+  /** Picked in the co-author picker (opened via "C" from list mode). */
+  coAuthors: Contributor[];
+}
+
+/** A small pill, GitHub Desktop–style — one per picked co-author. */
+function CoAuthorChip({ name }: { name: string }) {
+  return (
+    <box
+      style={{
+        flexDirection: "row",
+        height: 1,
+        paddingLeft: 1,
+        paddingRight: 1,
+        backgroundColor: theme.selectionBgMuted,
+      }}
+    >
+      <text style={{ fg: theme.fg }}>{`@ ${name}`}</text>
+    </box>
+  );
 }
 
 export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
-  { focused, amend, squashCount, stagedCount },
+  { focused, amend, squashCount, stagedCount, coAuthors },
   ref,
 ) {
   const areaRef = useRef<TextareaRenderable | null>(null);
   const squashing = squashCount !== undefined;
+  const hasCoAuthors = coAuthors.length > 0;
 
   useImperativeHandle(ref, () => ({
     getText: () => areaRef.current?.plainText ?? "",
@@ -50,7 +71,8 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
         border: true,
         borderColor: focused ? theme.borderActive : theme.border,
         flexDirection: "column",
-        height: 5,
+        // One extra row to fit the co-author chip strip, only when it's shown.
+        height: hasCoAuthors ? 6 : 5,
         flexShrink: 0,
       }}
     >
@@ -64,6 +86,13 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
         textColor={theme.fg}
         style={{ flexGrow: 1 }}
       />
+      {hasCoAuthors ? (
+        <box style={{ flexDirection: "row", height: 1, paddingLeft: 1, gap: 1 }}>
+          {coAuthors.map((c) => (
+            <CoAuthorChip key={c.email} name={c.name} />
+          ))}
+        </box>
+      ) : null}
       <box style={{ flexDirection: "row", height: 1, paddingLeft: 1 }}>
         <text
           style={{

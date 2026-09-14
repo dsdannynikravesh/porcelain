@@ -1,5 +1,6 @@
 export * from "./branches.js";
 export * from "./commit.js";
+export * from "./contributors.js";
 export * from "./diff.js";
 export * from "./exec.js";
 export * from "./fetch.js";

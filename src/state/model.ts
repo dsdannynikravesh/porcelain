@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { browse as gHBrowse } from "../gh/index.js";
 import {
   type Branch,
   type CommitOutcome,
+  type Contributor,
   diffFile,
   discardFile,
   type FetchOutcome,
@@ -22,6 +24,7 @@ import {
   switchBranch as gitSwitchBranch,
   unstageAll as gitUnstageAll,
   listBranches,
+  listContributors,
   listStashes,
   type PullOutcome,
   type PushOptions,
@@ -95,7 +98,12 @@ export interface RepoModel {
   stashPop: (ref: string) => Promise<StashOutcome>;
   stashApply: (ref: string) => Promise<StashOutcome>;
   stashDrop: (ref: string) => Promise<StashOutcome>;
+  contributors: Contributor[];
+  /** Refetches this repo's contributor list — call when opening the co-author picker. */
+  loadContributors: () => Promise<void>;
   setToast: (t: Toast | null) => void;
+  /** Opens this repo on github.com via `gh browse` (a no-op toast if `gh` isn't installed/authed). */
+  browse: () => Promise<void>;
 }
 
 function buildEntries(s: RepoStatus): SelectableEntry[] {
@@ -124,6 +132,7 @@ export function useRepoModel(): RepoModel {
   const [busy, setBusy] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [stashes, setStashes] = useState<StashEntry[]>([]);
+  const [contributors, setContributors] = useState<Contributor[]>([]);
 
   const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
 
@@ -576,6 +585,19 @@ export function useRepoModel(): RepoModel {
     [loadStashes],
   );
 
+  const loadContributors = useCallback(async () => {
+    try {
+      setContributors(await listContributors());
+    } catch (err) {
+      setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+    }
+  }, []);
+
+  const browse = useCallback(async () => {
+    const outcome = await gHBrowse();
+    setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+  }, []);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -626,6 +648,9 @@ export function useRepoModel(): RepoModel {
     stashPop,
     stashApply,
     stashDrop,
+    contributors,
+    loadContributors,
     setToast,
+    browse,
   };
 }
