@@ -1,12 +1,14 @@
-import type { Branch } from "../git/index.js";
+import type { StashEntry } from "../git/index.js";
 import { BOLD, theme } from "./theme.js";
 
 interface Props {
-  branches: Branch[];
+  stashes: StashEntry[];
   selectedIndex: number;
+  /** Whether there's anything in the working tree right now to stash. */
+  canStash: boolean;
 }
 
-export function BranchPicker({ branches, selectedIndex }: Props) {
+export function StashPicker({ stashes, selectedIndex, canStash }: Props) {
   return (
     <box
       style={{
@@ -22,27 +24,26 @@ export function BranchPicker({ branches, selectedIndex }: Props) {
       }}
     >
       <box
-        title=" Switch branch "
+        title=" Stash "
         style={{
           border: true,
           borderColor: theme.borderActive,
           backgroundColor: theme.bg,
           flexDirection: "column",
           padding: 1,
-          width: 48,
+          width: 60,
           gap: 1,
         }}
       >
-        {branches.length === 0 ? (
-          <text style={{ fg: theme.faint }}>Loading branches…</text>
+        {stashes.length === 0 ? (
+          <text style={{ fg: theme.faint }}>No stashes.</text>
         ) : (
           <box style={{ flexDirection: "column" }}>
-            {branches.map((b, i) => {
+            {stashes.map((s, i) => {
               const selected = i === selectedIndex;
-              const fg = selected ? theme.selectionFg : b.current ? theme.accent : theme.fg;
               return (
                 <box
-                  key={b.name}
+                  key={s.ref}
                   style={{
                     flexDirection: "row",
                     height: 1,
@@ -51,16 +52,20 @@ export function BranchPicker({ branches, selectedIndex }: Props) {
                     backgroundColor: selected ? theme.selectionBg : undefined,
                   }}
                 >
-                  <text style={{ fg, attributes: b.current ? BOLD : undefined }}>
-                    {`${b.current ? "● " : "  "}${b.name}`}
+                  <text
+                    style={{ fg: selected ? theme.selectionFg : theme.accent, attributes: BOLD }}
+                  >{`${s.ref}  `}</text>
+                  <text style={{ fg: selected ? theme.selectionFg : theme.fg }}>{s.subject}</text>
+                  <text style={{ fg: selected ? theme.selectionFg : theme.faint, flexGrow: 1 }}>
+                    {`  ${s.relativeDate}`}
                   </text>
                 </box>
               );
             })}
           </box>
         )}
-        <text style={{ fg: theme.dim }}>
-          j / k move · enter switch · n new · d delete · Esc cancel
+        <text style={{ fg: canStash ? theme.dim : theme.faint }}>
+          {canStash ? "n new stash  ·  " : ""}j / k move · p pop · a apply · d drop · Esc close
         </text>
       </box>
     </box>

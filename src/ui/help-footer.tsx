@@ -10,11 +10,11 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["a", "stage all"],
   ["A", "unstage all"],
   ["c", "commit msg"],
-  ["Ctrl+S", "commit", true],
+  ["Enter", "commit (Shift+Enter: new line)", true],
   ["M", "amend"],
   ["p", "pull"],
   ["P", "push"],
-  ["Ctrl+P", "force push (--force-with-lease)"],
+  ["F", "force push (--force-with-lease)"],
   ["e", "open in $EDITOR"],
   ["X", "discard"],
   ["d / u", "scroll diff"],
@@ -23,12 +23,20 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["r", "refresh"],
   ["t", "toggle history"],
   ["b", "switch branch"],
-  ["s", "squash to here (history tab)"],
+  ["s", "stash"],
+  ["S", "squash to here (history tab)"],
   ["?", "help", true],
   ["q", "quit", true],
 ];
 
 const ESSENTIAL_KEYS = KEYS.filter(([, , essential]) => essential);
+
+// Sized to the widest row (key column padded to 10 + its description) so the
+// modal never clips a line — computed instead of a fixed guess, so adding a
+// longer hint to KEYS can't quietly go stale the way this width itself did.
+const ROW_BORDER_AND_PADDING = 4; // border (1+1) + box padding (1+1)
+export const HELP_MODAL_WIDTH =
+  Math.max(...KEYS.map(([k, d]) => Math.max(k.length, 10) + d.length)) + ROW_BORDER_AND_PADDING;
 
 export function HelpFooter({ expanded }: { expanded: boolean }) {
   if (!expanded) {

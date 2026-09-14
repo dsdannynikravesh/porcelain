@@ -8,19 +8,28 @@ import {
   type FileDiff,
   type FileEntry,
   commit as gitCommit,
+  createBranch as gitCreateBranch,
+  deleteBranch as gitDeleteBranch,
   fetch as gitFetch,
   pull as gitPull,
   push as gitPush,
   squashToHead as gitSquash,
   stageAll as gitStageAll,
+  stashApply as gitStashApply,
+  stashDrop as gitStashDrop,
+  stashPop as gitStashPop,
+  stashPush as gitStashPush,
   switchBranch as gitSwitchBranch,
   unstageAll as gitUnstageAll,
   listBranches,
+  listStashes,
   type PullOutcome,
   type PushOptions,
   type PushOutcome,
   type RepoStatus,
   type SquashOutcome,
+  type StashEntry,
+  type StashOutcome,
   type SwitchOutcome,
   stageFile,
   status,
@@ -76,6 +85,16 @@ export interface RepoModel {
   /** Refetches the branch list — call when opening the branch picker. */
   loadBranches: () => Promise<void>;
   switchBranch: (name: string) => Promise<SwitchOutcome>;
+  createBranch: (name: string) => Promise<SwitchOutcome>;
+  deleteBranch: (name: string) => Promise<SwitchOutcome>;
+  stashes: StashEntry[];
+  /** Refetches the stash list — call when opening the stash picker. */
+  loadStashes: () => Promise<void>;
+  /** Stashes everything (staged, unstaged, untracked), leaving a clean tree. */
+  stashPush: (message?: string) => Promise<StashOutcome>;
+  stashPop: (ref: string) => Promise<StashOutcome>;
+  stashApply: (ref: string) => Promise<StashOutcome>;
+  stashDrop: (ref: string) => Promise<StashOutcome>;
   setToast: (t: Toast | null) => void;
 }
 
@@ -104,6 +123,7 @@ export function useRepoModel(): RepoModel {
   const [toast, setToast] = useState<Toast | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [stashes, setStashes] = useState<StashEntry[]>([]);
 
   const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
 
@@ -433,6 +453,129 @@ export function useRepoModel(): RepoModel {
     [refresh],
   );
 
+  const createBranch = useCallback(
+    async (name: string): Promise<SwitchOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Creating branch";
+      setBusy("Creating branch");
+      try {
+        const outcome = await gitCreateBranch(name);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        // New branch means a new current HEAD — same history-refresh caveat
+        // as switchBranch above (the caller owns that separate hook).
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
+  const deleteBranch = useCallback(
+    async (name: string): Promise<SwitchOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Deleting branch";
+      setBusy("Deleting branch");
+      try {
+        const outcome = await gitDeleteBranch(name);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        // Doesn't touch the working tree (git refuses to delete the current
+        // branch), just the list the picker shows.
+        await loadBranches();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [loadBranches],
+  );
+
+  const loadStashes = useCallback(async () => {
+    try {
+      setStashes(await listStashes());
+    } catch (err) {
+      setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+    }
+  }, []);
+
+  const stashPush = useCallback(
+    async (message?: string): Promise<StashOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Stashing";
+      setBusy("Stashing");
+      try {
+        const outcome = await gitStashPush(message);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await refresh();
+        await loadStashes();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh, loadStashes],
+  );
+
+  const stashPop = useCallback(
+    async (ref: string): Promise<StashOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Popping stash";
+      setBusy("Popping stash");
+      try {
+        const outcome = await gitStashPop(ref);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await refresh();
+        await loadStashes();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh, loadStashes],
+  );
+
+  const stashApply = useCallback(
+    async (ref: string): Promise<StashOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Applying stash";
+      setBusy("Applying stash");
+      try {
+        const outcome = await gitStashApply(ref);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await refresh();
+        await loadStashes();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh, loadStashes],
+  );
+
+  const stashDrop = useCallback(
+    async (ref: string): Promise<StashOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Dropping stash";
+      setBusy("Dropping stash");
+      try {
+        const outcome = await gitStashDrop(ref);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await loadStashes();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [loadStashes],
+  );
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -475,6 +618,14 @@ export function useRepoModel(): RepoModel {
     branches,
     loadBranches,
     switchBranch,
+    createBranch,
+    deleteBranch,
+    stashes,
+    loadStashes,
+    stashPush,
+    stashPop,
+    stashApply,
+    stashDrop,
     setToast,
   };
 }

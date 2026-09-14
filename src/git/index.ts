@@ -8,4 +8,5 @@ export * from "./pull.js";
 export * from "./push.js";
 export * from "./squash.js";
 export * from "./stage.js";
+export * from "./stash.js";
 export * from "./status.js";

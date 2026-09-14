@@ -110,7 +110,7 @@ export function StatusBar({ status, repoPath, changeCount, busy, toast }: Props)
               {behind > 0 ? <Chip label={`⇣${behind} Pull p`} color={theme.warn} /> : null}
               {ahead > 0 ? (
                 <Chip
-                  label={diverged ? `⇡${ahead} Push^P` : `⇡${ahead} Push P`}
+                  label={diverged ? `⇡${ahead} Push F` : `⇡${ahead} Push P`}
                   color={diverged ? theme.warn : theme.accent}
                 />
               ) : null}

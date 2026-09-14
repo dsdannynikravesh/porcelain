@@ -6,6 +6,10 @@ export interface CommitBoxHandle {
   getText: () => string;
   clear: () => void;
   setText: (text: string) => void;
+  /** Plain Enter submits (see app.tsx), so Shift+Enter's newline has to be
+   *  driven explicitly — the textarea's own default binding only fires on
+   *  an unmodified Enter, not "Enter regardless of modifiers." */
+  insertNewline: () => void;
 }
 
 interface Props {
@@ -27,6 +31,7 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
     getText: () => areaRef.current?.plainText ?? "",
     clear: () => areaRef.current?.clear(),
     setText: (text: string) => areaRef.current?.setText(text),
+    insertNewline: () => areaRef.current?.newLine(),
   }));
 
   const hint = amend
@@ -52,7 +57,7 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
       <textarea
         ref={areaRef}
         focused={focused}
-        placeholder="Commit message — Ctrl+S to commit, Esc to cancel"
+        placeholder="Commit message — Enter to commit, Shift+Enter for a new line, Esc to cancel"
         placeholderColor={theme.faint}
         backgroundColor={theme.panelBg}
         focusedBackgroundColor={theme.panelBg}

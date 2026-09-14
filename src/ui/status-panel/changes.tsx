@@ -24,19 +24,24 @@ function truncate(text: string, max: number): string {
 function RowView({
   row,
   selected,
+  focused,
   width,
   onSelect,
   onActivate,
 }: {
   row: TreeRow;
   selected: boolean;
+  focused: boolean;
   width: number;
   onSelect?: (key: string) => void;
   onActivate?: (key: string) => void;
 }) {
   const pad = 1 + row.depth * INDENT;
   const avail = Math.max(4, width - pad - 3);
-  const fg = selected ? theme.selectionFg : undefined;
+  // Blue only where j/k actually act right now; a muted gray still marks the
+  // row elsewhere so the selection doesn't just disappear when focus moves.
+  const fg = selected && focused ? theme.selectionFg : undefined;
+  const bg = selected ? (focused ? theme.selectionBg : theme.selectionBgMuted) : undefined;
 
   return (
     <box
@@ -50,7 +55,7 @@ function RowView({
         height: 1,
         paddingLeft: pad,
         paddingRight: 1,
-        backgroundColor: selected ? theme.selectionBg : undefined,
+        backgroundColor: bg,
       }}
     >
       {row.type === "dir" ? (
@@ -102,6 +107,7 @@ export function StatusPanelChanges({
           key={row.key}
           row={row}
           selected={row.key === selectedKey}
+          focused={focused}
           width={width - 2}
           onSelect={onSelect}
           onActivate={onActivate}

@@ -22,15 +22,20 @@ function truncate(text: string, max: number): string {
 function RowView({
   file,
   selected,
+  focused,
   width,
   onSelect,
 }: {
   file: CommitFileEntry;
   selected: boolean;
+  focused: boolean;
   width: number;
   onSelect?: (path: string) => void;
 }) {
-  const fg = selected ? theme.selectionFg : undefined;
+  // Blue only where j/k actually act right now; a muted gray still marks the
+  // row elsewhere so the selection doesn't just disappear when focus moves.
+  const fg = selected && focused ? theme.selectionFg : undefined;
+  const bg = selected ? (focused ? theme.selectionBg : theme.selectionBgMuted) : undefined;
   const avail = Math.max(4, width - 1 - 3);
 
   return (
@@ -43,7 +48,7 @@ function RowView({
         height: 1,
         paddingLeft: 1,
         paddingRight: 1,
-        backgroundColor: selected ? theme.selectionBg : undefined,
+        backgroundColor: bg,
       }}
     >
       <text
@@ -71,6 +76,7 @@ export function CommittedFiles({ files, selectedPath, focused, width, onSelect }
           key={f.path}
           file={f}
           selected={f.path === selectedPath}
+          focused={focused}
           width={width - 2}
           onSelect={onSelect}
         />

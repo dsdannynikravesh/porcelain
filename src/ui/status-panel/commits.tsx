@@ -22,15 +22,20 @@ function truncate(text: string, max: number): string {
 function CommitRowView({
   commit,
   selected,
+  focused,
   width,
   onSelect,
 }: {
   commit: CommitEntry;
   selected: boolean;
+  focused: boolean;
   width: number;
   onSelect?: (sha: string) => void;
 }) {
-  const fg = selected ? theme.selectionFg : undefined;
+  // Blue only where j/k actually act right now; a muted gray still marks the
+  // row elsewhere so the selection doesn't just disappear when focus moves.
+  const fg = selected && focused ? theme.selectionFg : undefined;
+  const bg = selected ? (focused ? theme.selectionBg : theme.selectionBgMuted) : undefined;
   const avail = Math.max(4, width - 1 - commit.shortSha.length - 2);
 
   return (
@@ -43,7 +48,7 @@ function CommitRowView({
         height: 1,
         paddingLeft: 1,
         paddingRight: 1,
-        backgroundColor: selected ? theme.selectionBg : undefined,
+        backgroundColor: bg,
       }}
     >
       <text style={{ fg: fg ?? theme.accent, attributes: BOLD }}>{`${commit.shortSha} `}</text>
@@ -85,6 +90,7 @@ export function StatusPanelCommits({ commits, selectedSha, focused, width, onSel
             key={c.sha}
             commit={c}
             selected={c.sha === selectedSha}
+            focused={focused}
             width={width - 2}
             onSelect={onSelect}
           />

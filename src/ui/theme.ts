@@ -23,6 +23,10 @@ export const theme = {
 
   selectionBg: "#1f6feb",
   selectionFg: "#ffffff",
+  /** Selection highlight for a pane that isn't the one with keyboard focus —
+   *  still marks "this is the current row here," just not the vivid blue
+   *  reserved for wherever j/k actually act right now. */
+  selectionBgMuted: "#21262d",
   headerFg: "#f0f6fc",
 
   diffAddedBg: "#12261e",

@@ -9,8 +9,10 @@ import { BranchPicker } from "./branch-picker.js";
 import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
-import { HelpFooter } from "./help-footer.js";
+import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
+import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
 import { firstHunkLine, openInEditor } from "./open-editor.js";
+import { StashPicker } from "./stash-picker.js";
 import { StatusBar } from "./status-bar.js";
 import { StatusPanelCommits } from "./status-panel/commits.js";
 import { StatusPanel, type StatusTab } from "./status-panel/index.js";
@@ -50,8 +52,12 @@ export function App() {
   const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
   const [showBranches, setShowBranches] = useState(false);
   const [branchIndex, setBranchIndex] = useState(0);
+  const [showNewBranch, setShowNewBranch] = useState(false);
+  const [showStash, setShowStash] = useState(false);
+  const [stashIndex, setStashIndex] = useState(0);
 
   const commitRef = useRef<CommitBoxHandle>(null);
+  const newBranchRef = useRef<NewBranchPromptHandle>(null);
   const diffScrollRef = useRef<DiffScrollHandle>(null);
 
   const refresh = model.refresh;
@@ -197,6 +203,55 @@ export function App() {
     setBranchIndex(idx >= 0 ? idx : 0);
   }, [showBranches, model.branches]);
 
+  const submitNewBranch = useCallback(() => {
+    const name = newBranchRef.current?.getValue().trim() ?? "";
+    if (!name) return;
+    setShowNewBranch(false);
+    setShowBranches(false);
+    void (async () => {
+      await model.createBranch(name);
+      void history.refresh();
+    })();
+  }, [model, history]);
+
+  const requestDeleteBranch = useCallback(() => {
+    const target = model.branches[branchIndex];
+    if (!target) return;
+    if (target.current) {
+      model.setToast({ kind: "err", text: "Can't delete the branch you're on" });
+      return;
+    }
+    setConfirm({
+      title: "Delete branch",
+      body: `Permanently delete local branch "${target.name}". Refuses if it isn't fully merged into the current branch.`,
+      command: `git branch -d ${target.name}`,
+      danger: true,
+      run: async () => {
+        await model.deleteBranch(target.name);
+      },
+    });
+  }, [model, branchIndex]);
+
+  const openStashPicker = useCallback(() => {
+    setShowStash(true);
+    setStashIndex(0);
+    void model.loadStashes();
+  }, [model]);
+
+  const requestStashDrop = useCallback(() => {
+    const target = model.stashes[stashIndex];
+    if (!target) return;
+    setConfirm({
+      title: "Drop stash",
+      body: `Permanently delete ${target.ref} (${target.subject}). This cannot be undone.`,
+      command: `git stash drop ${target.ref}`,
+      danger: true,
+      run: async () => {
+        await model.stashDrop(target.ref);
+      },
+    });
+  }, [model, stashIndex]);
+
   const requestForcePush = useCallback(() => {
     setConfirm({
       title: "Force push",
@@ -247,7 +302,17 @@ export function App() {
       return;
     }
 
-    // 3. Branch picker owns all input while open.
+    // 3. New-branch name prompt — let the input have the keys, only intercept these.
+    if (showNewBranch) {
+      if (isKey(key, "escape")) {
+        setShowNewBranch(false);
+      } else if (isKey(key, "return")) {
+        submitNewBranch();
+      }
+      return;
+    }
+
+    // 4. Branch picker owns all input while open.
     if (showBranches) {
       if (isKey(key, "escape")) {
         setShowBranches(false);
@@ -264,17 +329,52 @@ export function App() {
             void history.refresh();
           })();
         }
+      } else if (isKey(key, "n")) {
+        setShowNewBranch(true);
+      } else if (isKey(key, "d")) {
+        requestDeleteBranch();
       }
       return;
     }
 
-    // 4. Commit editor mode — let the textarea have the keys, only intercept a few.
+    // 5. Stash picker owns all input while open.
+    if (showStash) {
+      const canStash = model.entries.length > 0;
+      if (isKey(key, "escape")) {
+        setShowStash(false);
+      } else if (isKey(key, "j") || isKey(key, "down")) {
+        setStashIndex((i) => Math.min(i + 1, model.stashes.length - 1));
+      } else if (isKey(key, "k") || isKey(key, "up")) {
+        setStashIndex((i) => Math.max(i - 1, 0));
+      } else if (isKey(key, "n")) {
+        if (canStash) void model.stashPush();
+      } else if (isKey(key, "p")) {
+        const target = model.stashes[stashIndex];
+        if (target) {
+          setShowStash(false);
+          void model.stashPop(target.ref);
+        }
+      } else if (isKey(key, "a")) {
+        const target = model.stashes[stashIndex];
+        if (target) {
+          setShowStash(false);
+          void model.stashApply(target.ref);
+        }
+      } else if (isKey(key, "d")) {
+        requestStashDrop();
+      }
+      return;
+    }
+
+    // 6. Commit editor mode — let the textarea have the keys, only intercept a few.
     if (focus === "commit") {
       if (isKey(key, "escape")) {
         cancelCommit();
-      } else if (key.name === "s" && key.ctrl) {
+      } else if (key.name === "return" && !key.shift && !key.ctrl) {
         if (squash) requestSquash();
         else requestCommit();
+      } else if (key.name === "return" && key.shift) {
+        commitRef.current?.insertNewline();
       } else if (isKey(key, "tab")) {
         setFocus("list");
       }
@@ -283,7 +383,7 @@ export function App() {
 
     const inHistory = statusTab === "history";
 
-    // 5. List mode.
+    // 7. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
     } else if (isKey(key, "q")) {
@@ -323,13 +423,11 @@ export function App() {
       if (!inHistory) void model.unstageAll();
     } else if (isKey(key, "c")) {
       if (!inHistory) enterCommit();
-    } else if (key.name === "s" && key.ctrl) {
-      if (!inHistory) requestCommit();
     } else if (isKey(key, "M")) {
       if (!inHistory) void startAmend();
     } else if (isKey(key, "P")) {
       if (!inHistory) void model.push();
-    } else if (key.name === "p" && key.ctrl) {
+    } else if (isKey(key, "F")) {
       if (!inHistory) requestForcePush();
     } else if (isKey(key, "p")) {
       if (!inHistory) void model.pull();
@@ -358,6 +456,8 @@ export function App() {
     } else if (isKey(key, "b")) {
       openBranchPicker();
     } else if (isKey(key, "s")) {
+      openStashPicker();
+    } else if (isKey(key, "S")) {
       if (inHistory && historyFocus === "commits") startSquash();
     }
   });
@@ -465,7 +565,7 @@ export function App() {
             zIndex: 50,
           }}
         >
-          <box style={{ width: 40 }}>
+          <box style={{ width: HELP_MODAL_WIDTH }}>
             <HelpFooter expanded />
           </box>
         </box>
@@ -473,6 +573,14 @@ export function App() {
 
       {confirm ? <Confirm request={confirm} /> : null}
       {showBranches ? <BranchPicker branches={model.branches} selectedIndex={branchIndex} /> : null}
+      {showNewBranch ? <NewBranchPrompt ref={newBranchRef} /> : null}
+      {showStash ? (
+        <StashPicker
+          stashes={model.stashes}
+          selectedIndex={stashIndex}
+          canStash={model.entries.length > 0}
+        />
+      ) : null}
     </box>
   );
 }
