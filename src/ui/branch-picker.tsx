@@ -39,7 +39,13 @@ export function BranchPicker({ branches, selectedIndex }: Props) {
           <box style={{ flexDirection: "column" }}>
             {branches.map((b, i) => {
               const selected = i === selectedIndex;
-              const fg = selected ? theme.selectionFg : b.current ? theme.accent : theme.fg;
+              const fg = selected
+                ? theme.selectionFg
+                : b.current
+                  ? theme.accent
+                  : b.remote
+                    ? theme.dim
+                    : theme.fg;
               return (
                 <box
                   key={b.name}
@@ -60,7 +66,7 @@ export function BranchPicker({ branches, selectedIndex }: Props) {
           </box>
         )}
         <text style={{ fg: theme.dim }}>
-          j / k move · enter switch · n new · d delete · Esc cancel
+          j / k move · enter switch · n new · m merge · d delete · Esc cancel
         </text>
       </box>
     </box>

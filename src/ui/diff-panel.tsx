@@ -1,6 +1,6 @@
 import type { DiffRenderable } from "@opentui/core";
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
-import type { FileDiff } from "../git/index.js";
+import type { FileDiff, Hunk } from "../git/index.js";
 import { syntaxStyle } from "./syntax.js";
 import { BOLD, theme } from "./theme.js";
 
@@ -19,6 +19,9 @@ interface Props {
   empty: boolean;
   diff: FileDiff | null;
   loading: boolean;
+  /** Hunks of `diff`, for the hunk-staging affordance — [] disables it entirely. */
+  hunks: Hunk[];
+  selectedHunkIndex: number;
   view: "split" | "unified";
   showLineNumbers: boolean;
   wrap: boolean;
@@ -49,7 +52,7 @@ function Message({ children }: { children: string }) {
 }
 
 export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
-  { title, empty, diff, loading, view, showLineNumbers, wrap, width },
+  { title, empty, diff, loading, hunks, selectedHunkIndex, view, showLineNumbers, wrap, width },
   ref,
 ) {
   const diffRef = useRef<DiffRenderable | null>(null);
@@ -72,7 +75,28 @@ export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
     applyScroll(() => 0);
   }, [title, diff?.patch]);
 
-  const boxTitle = title ?? " Diff ";
+  // Mark which hunk `H` will stage/unstage: a soft background over its rows,
+  // and scroll it into view so navigating hunks with `[`/`]` doesn't require
+  // separately scrolling the diff to find where you ended up.
+  useEffect(() => {
+    const node = diffRef.current;
+    if (!node) return;
+    node.clearAllLineColors();
+    const hunk = hunks[selectedHunkIndex];
+    if (!hunk) return;
+    const offsets = node.getHunkRowOffsets();
+    const start = offsets[selectedHunkIndex];
+    if (start === undefined) return;
+    // Bounded by the hunk's own (finite) line count — never an open-ended
+    // scan — so this can't turn into a runaway loop even if wrapping makes
+    // the real rendered span longer or shorter than this estimate.
+    const end = offsets[selectedHunkIndex + 1] ?? start + hunk.lines.length;
+    node.highlightLines(start, Math.max(start, end - 1), theme.selectionBgMuted);
+    applyScroll(() => start);
+  }, [hunks, selectedHunkIndex]);
+
+  const hunkSuffix = hunks.length > 1 ? `  ·  hunk ${selectedHunkIndex + 1}/${hunks.length}` : "";
+  const boxTitle = title ? `${title}${hunkSuffix}` : " Diff ";
 
   let body: React.ReactNode;
   if (!title && empty) {

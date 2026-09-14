@@ -1,7 +1,7 @@
 import type { KeyEvent } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getGitCwd, lastCommitMessage, withCoAuthors } from "../git/index.js";
+import { checkoutName, getGitCwd, lastCommitMessage, withCoAuthors } from "../git/index.js";
 import { useCommitHistory } from "../state/history.js";
 import { useRepoModel } from "../state/model.js";
 import { useRepoWatch } from "../state/watch.js";
@@ -9,6 +9,7 @@ import { BranchPicker } from "./branch-picker.js";
 import { CoAuthorPicker } from "./co-author-picker.js";
 import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
+import { ConflictBanner } from "./conflict-banner.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
 import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
 import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
@@ -232,6 +233,10 @@ export function App() {
   const requestDeleteBranch = useCallback(() => {
     const target = model.branches[branchIndex];
     if (!target) return;
+    if (target.remote) {
+      model.setToast({ kind: "err", text: "Not checked out locally — nothing to delete" });
+      return;
+    }
     if (target.current) {
       model.setToast({ kind: "err", text: "Can't delete the branch you're on" });
       return;
@@ -246,6 +251,27 @@ export function App() {
       },
     });
   }, [model, branchIndex]);
+
+  const requestMergeBranch = useCallback(() => {
+    const target = model.branches[branchIndex];
+    if (!target) return;
+    if (target.current) {
+      model.setToast({ kind: "err", text: "Already on this branch" });
+      return;
+    }
+    const name = checkoutName(target);
+    setConfirm({
+      title: "Merge branch",
+      body: `Merges ${name} into your current branch. If it conflicts, resolve it like any other conflict — a banner will guide you through it.`,
+      command: `git merge --no-edit ${name}`,
+      danger: true,
+      run: async () => {
+        setShowBranches(false);
+        await model.mergeBranch(name);
+        void history.refresh();
+      },
+    });
+  }, [model, branchIndex, history]);
 
   const openStashPicker = useCallback(() => {
     setShowStash(true);
@@ -293,6 +319,19 @@ export function App() {
       },
     });
   }, [model, stashIndex]);
+
+  const requestAbortConflict = useCallback(() => {
+    const kind = model.repoState === "rebasing" ? "rebase" : "merge";
+    setConfirm({
+      title: `Abort ${kind}`,
+      body: `Stops the ${kind} and puts things back exactly how they were before it started. Any conflict resolutions you've made so far are discarded.`,
+      command: `git ${kind} --abort`,
+      danger: true,
+      run: async () => {
+        await model.abortConflict();
+      },
+    });
+  }, [model]);
 
   const requestForcePush = useCallback(() => {
     setConfirm({
@@ -367,12 +406,14 @@ export function App() {
         setShowBranches(false);
         if (target && !target.current) {
           void (async () => {
-            await model.switchBranch(target.name);
+            await model.switchBranch(checkoutName(target));
             void history.refresh();
           })();
         }
       } else if (isKey(key, "n")) {
         setShowNewBranch(true);
+      } else if (isKey(key, "m")) {
+        requestMergeBranch();
       } else if (isKey(key, "d")) {
         requestDeleteBranch();
       }
@@ -494,7 +535,7 @@ export function App() {
       } else {
         void model.toggleStage();
       }
-    } else if (isKey(key, "left")) {
+    } else if (isKey(key, "left") || isKey(key, "h")) {
       if (inHistory) setHistoryFocus("commits");
       else if (model.selectedKey?.startsWith("dir:")) model.setCollapsed(model.selectedKey, true);
     } else if (isKey(key, "right") || isKey(key, "l")) {
@@ -524,6 +565,12 @@ export function App() {
       diffScrollRef.current?.scrollBy(8);
     } else if (isKey(key, "u")) {
       diffScrollRef.current?.scrollBy(-8);
+    } else if (isKey(key, "[")) {
+      if (!inHistory) model.moveHunk(-1);
+    } else if (isKey(key, "]")) {
+      if (!inHistory) model.moveHunk(1);
+    } else if (isKey(key, "H")) {
+      if (!inHistory) void model.toggleHunkStage();
     } else if (isKey(key, "v")) {
       setDiffView((v) => (v === "split" ? "unified" : "split"));
     } else if (isKey(key, "n")) {
@@ -535,7 +582,7 @@ export function App() {
       void history.refresh();
     } else if (isKey(key, "tab")) {
       setFocus("commit");
-    } else if (isKey(key, "h")) {
+    } else if (isKey(key, "t")) {
       setStatusTab((t) => (t === "changes" ? "history" : "changes"));
       setHistoryFocus("commits");
     } else if (isKey(key, "b")) {
@@ -548,6 +595,10 @@ export function App() {
       void model.browse();
     } else if (isKey(key, "z")) {
       openReflogPicker();
+    } else if (isKey(key, "g")) {
+      if (model.repoState !== "clean") void model.continueConflict();
+    } else if (isKey(key, "G")) {
+      if (model.repoState !== "clean") requestAbortConflict();
     }
   });
 
@@ -592,6 +643,7 @@ export function App() {
         busy={model.busy}
         toast={model.toast}
       />
+      <ConflictBanner repoState={model.repoState} />
 
       <box style={{ flexDirection: "row", flexGrow: 1, flexShrink: 1 }}>
         {statusTab === "history" ? (
@@ -625,6 +677,8 @@ export function App() {
           empty={statusTab === "history" ? history.commits.length === 0 : model.rows.length === 0}
           diff={statusTab === "history" ? history.diff : model.diff}
           loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
+          hunks={statusTab === "history" ? [] : model.hunks}
+          selectedHunkIndex={model.selectedHunkIndex}
           view={diffView}
           showLineNumbers={showLineNumbers}
           wrap={wrapDiff}

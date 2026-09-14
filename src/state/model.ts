@@ -9,21 +9,30 @@ import {
   type FetchOutcome,
   type FileDiff,
   type FileEntry,
+  getRepoState,
+  abortMerge as gitAbortMerge,
+  abortRebase as gitAbortRebase,
   commit as gitCommit,
+  continueMerge as gitContinueMerge,
+  continueRebase as gitContinueRebase,
   createBranch as gitCreateBranch,
   deleteBranch as gitDeleteBranch,
   fetch as gitFetch,
+  mergeBranch as gitMergeBranch,
   pull as gitPull,
   push as gitPush,
   resetSoftTo as gitResetSoftTo,
   squashToHead as gitSquash,
   stageAll as gitStageAll,
+  stageHunk as gitStageHunk,
   stashApply as gitStashApply,
   stashDrop as gitStashDrop,
   stashPop as gitStashPop,
   stashPush as gitStashPush,
   switchBranch as gitSwitchBranch,
   unstageAll as gitUnstageAll,
+  unstageHunk as gitUnstageHunk,
+  type Hunk,
   listBranches,
   listContributors,
   listReflog,
@@ -31,7 +40,10 @@ import {
   type PullOutcome,
   type PushOptions,
   type PushOutcome,
+  parseHunks,
   type ReflogEntry,
+  type RepoState,
+  type RepoStateOutcome,
   type RepoStatus,
   type SquashOutcome,
   type StashEntry,
@@ -59,6 +71,12 @@ export interface Toast {
 
 export interface RepoModel {
   status: RepoStatus | null;
+  /** "clean" unless mid-merge or mid-rebase (detected from .git's own marker files). */
+  repoState: RepoState;
+  /** Runs `git rebase --continue` or `git commit --no-edit` (finishing a merge), whichever `repoState` calls for. */
+  continueConflict: () => Promise<RepoStateOutcome>;
+  /** Runs `git rebase --abort` or `git merge --abort`, whichever `repoState` calls for. */
+  abortConflict: () => Promise<RepoStateOutcome>;
   entries: SelectableEntry[];
   /** Visible rows of the folder tree (directories + files), in display order. */
   rows: TreeRow[];
@@ -67,6 +85,15 @@ export interface RepoModel {
   selected: SelectableEntry | null;
   diff: FileDiff | null;
   diffLoading: boolean;
+  /** Hunks of the currently-shown diff — [] when there's nothing hunk-stageable
+   *  (no file selected, a conflicted/unmerged file, or a diff with no `@@` hunks). */
+  hunks: Hunk[];
+  /** Which of `hunks` is selected, clamped to the current hunk count. */
+  selectedHunkIndex: number;
+  moveHunk: (delta: number) => void;
+  /** Stages (if viewing the unstaged diff) or unstages (if viewing the staged
+   *  diff) just the selected hunk, leaving the file's other hunks alone. */
+  toggleHunkStage: () => Promise<void>;
   loading: boolean;
   error: string | null;
   toast: Toast | null;
@@ -94,6 +121,8 @@ export interface RepoModel {
   switchBranch: (name: string) => Promise<SwitchOutcome>;
   createBranch: (name: string) => Promise<SwitchOutcome>;
   deleteBranch: (name: string) => Promise<SwitchOutcome>;
+  /** Merges `name` into whatever branch is currently checked out. */
+  mergeBranch: (name: string) => Promise<SwitchOutcome>;
   stashes: StashEntry[];
   /** Refetches the stash list — call when opening the stash picker. */
   loadStashes: () => Promise<void>;
@@ -130,11 +159,13 @@ const dirPathOf = (key: string) => (key.startsWith("dir:") ? key.slice(4) : null
 
 export function useRepoModel(): RepoModel {
   const [repoStatus, setRepoStatus] = useState<RepoStatus | null>(null);
+  const [repoState, setRepoState] = useState<RepoState>("clean");
   const [entries, setEntries] = useState<SelectableEntry[]>([]);
   const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(new Set());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [selectedHunkIndex, setSelectedHunkIndexState] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -154,6 +185,8 @@ export function useRepoModel(): RepoModel {
   collapsedRef.current = collapsedDirs;
   const entriesRef = useRef<SelectableEntry[]>([]);
   entriesRef.current = entries;
+  const diffRef = useRef<FileDiff | null>(null);
+  diffRef.current = diff;
 
   const diffReqRef = useRef(0);
   /** Rows as of the previous refresh, for index-based fallback selection. */
@@ -165,8 +198,9 @@ export function useRepoModel(): RepoModel {
 
   const refresh = useCallback(async () => {
     try {
-      const s = await status();
+      const [s, rs] = await Promise.all([status(), getRepoState()]);
       setRepoStatus(s);
+      setRepoState(rs);
       setError(null);
       const nextEntries = buildEntries(s);
       entriesRef.current = nextEntries;
@@ -230,6 +264,40 @@ export function useRepoModel(): RepoModel {
         if (diffReqRef.current === reqId) setDiffLoading(false);
       });
   }, [selectedKey, entries]);
+
+  // Hunks of whatever diff is currently shown — never for a conflicted file
+  // (its diff isn't a normal two-way patch, so hunk staging doesn't apply;
+  // conflicts are resolved via `e` per feature #2, not here).
+  const hunks = useMemo(() => {
+    const current = entries.find((e) => e.key === selectedKey) ?? null;
+    if (!current || current.entry.unmerged) return [];
+    if (!diff || diff.binary || diff.truncated || diff.patch.trim() === "") return [];
+    return parseHunks(diff.patch);
+  }, [entries, selectedKey, diff]);
+  const hunksRef = useRef<Hunk[]>([]);
+  hunksRef.current = hunks;
+
+  const selectedHunkIndexRef = useRef(0);
+  const clampedHunkIndex = Math.min(selectedHunkIndex, Math.max(0, hunks.length - 1));
+  selectedHunkIndexRef.current = clampedHunkIndex;
+
+  // Reset to the first hunk whenever the shown diff's content actually
+  // changes — a freshly-picked file, or the hunk count shifting after a
+  // stage/unstage. Keyed on the patch text itself (not the `diff` object,
+  // which is a fresh reference on every refresh even when unchanged) so an
+  // unrelated background refresh doesn't yank the cursor mid-navigation.
+  useEffect(() => {
+    selectedHunkIndexRef.current = 0;
+    setSelectedHunkIndexState(0);
+  }, [diff?.patch]);
+
+  const moveHunk = useCallback((delta: number) => {
+    const list = hunksRef.current;
+    if (list.length === 0) return;
+    const next = Math.min(Math.max(selectedHunkIndexRef.current + delta, 0), list.length - 1);
+    selectedHunkIndexRef.current = next;
+    setSelectedHunkIndexState(next);
+  }, []);
 
   // Update the ref synchronously too, so bursts of keypresses that land before
   // the next render (e.g. "jj") each see the updated selection.
@@ -322,6 +390,27 @@ export function useRepoModel(): RepoModel {
       goingToStaged ? "Staging file" : "Unstaging file",
     );
   }, [runMutation, expandAncestors]);
+
+  const toggleHunkStage = useCallback(async () => {
+    if (busyRef.current) return;
+    const current = entriesRef.current.find((e) => e.key === selectedKeyRef.current);
+    const hunk = hunksRef.current[selectedHunkIndexRef.current];
+    const patch = diffRef.current?.patch;
+    if (!current || current.entry.unmerged || !hunk || !patch) return;
+    const stagingIn = current.section === "unstaged";
+    // Stay on the same key — if this was the file's only hunk on this side,
+    // it'll vanish and refresh()'s nearest-row fallback takes over instead.
+    pendingSelectRef.current = selectedKeyRef.current;
+    await runMutation(
+      async () => {
+        const outcome = stagingIn
+          ? await gitStageHunk(patch, hunk)
+          : await gitUnstageHunk(patch, hunk);
+        if (!outcome.ok) throw new Error(outcome.message);
+      },
+      stagingIn ? "Staging hunk" : "Unstaging hunk",
+    );
+  }, [runMutation]);
 
   const stageAll = useCallback(
     () => runMutation(() => gitStageAll(), "Staging all changes", "Staged all changes"),
@@ -492,6 +581,26 @@ export function useRepoModel(): RepoModel {
     [refresh],
   );
 
+  const mergeBranch = useCallback(
+    async (name: string): Promise<SwitchOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Merging branch";
+      setBusy("Merging branch");
+      try {
+        const outcome = await gitMergeBranch(name);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        // A conflicted merge leaves MERGE_HEAD behind — refresh() picks that
+        // up via getRepoState() and the conflict banner takes it from there.
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
   const deleteBranch = useCallback(
     async (name: string): Promise<SwitchOutcome> => {
       if (busyRef.current) return { ok: false, message: "busy" };
@@ -630,6 +739,37 @@ export function useRepoModel(): RepoModel {
     [refresh, loadReflog],
   );
 
+  const continueConflict = useCallback(async (): Promise<RepoStateOutcome> => {
+    if (busyRef.current) return { ok: false, message: "busy" };
+    busyRef.current = "Continuing";
+    setBusy("Continuing");
+    try {
+      const outcome =
+        repoState === "rebasing" ? await gitContinueRebase() : await gitContinueMerge();
+      setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+      await refresh();
+      return outcome;
+    } finally {
+      busyRef.current = null;
+      setBusy(null);
+    }
+  }, [repoState, refresh]);
+
+  const abortConflict = useCallback(async (): Promise<RepoStateOutcome> => {
+    if (busyRef.current) return { ok: false, message: "busy" };
+    busyRef.current = "Aborting";
+    setBusy("Aborting");
+    try {
+      const outcome = repoState === "rebasing" ? await gitAbortRebase() : await gitAbortMerge();
+      setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+      await refresh();
+      return outcome;
+    } finally {
+      busyRef.current = null;
+      setBusy(null);
+    }
+  }, [repoState, refresh]);
+
   const browse = useCallback(async () => {
     const outcome = await gHBrowse();
     setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
@@ -650,12 +790,19 @@ export function useRepoModel(): RepoModel {
 
   return {
     status: repoStatus,
+    repoState,
+    continueConflict,
+    abortConflict,
     entries,
     rows,
     selectedKey,
     selected,
     diff,
     diffLoading,
+    hunks,
+    selectedHunkIndex: clampedHunkIndex,
+    moveHunk,
+    toggleHunkStage,
     loading,
     error,
     toast,
@@ -679,6 +826,7 @@ export function useRepoModel(): RepoModel {
     switchBranch,
     createBranch,
     deleteBranch,
+    mergeBranch,
     stashes,
     loadStashes,
     stashPush,

@@ -17,7 +17,11 @@ export function useRepoWatch(onChange: () => void, delayMs = 250): void {
     };
 
     const relevantGitPath = (p: string) =>
-      /(^|\/)(index|HEAD|ORIG_HEAD|MERGE_HEAD)$/.test(p) || /(^|\/)refs\//.test(p);
+      /(^|\/)(index|HEAD|ORIG_HEAD|MERGE_HEAD)$/.test(p) ||
+      /(^|\/)refs\//.test(p) ||
+      // rebase-merge/rebase-apply are directories that appear/disappear (and
+      // churn internally) exactly when entering/progressing/leaving a rebase.
+      /(^|\/)(rebase-merge|rebase-apply)(\/|$)/.test(p);
 
     let watcher: ReturnType<typeof watch> | null = null;
     try {
