@@ -10,7 +10,7 @@ let repo: string;
 const LONG = "wrapme ".repeat(30).trim();
 
 beforeAll(async () => {
-  repo = realpathSync(mkdtempSync(join(tmpdir(), "gitpretty-wrap-")));
+  repo = realpathSync(mkdtempSync(join(tmpdir(), "porcelain-wrap-")));
   setGitCwd(repo);
   const git = (...a: string[]) => runGitOrThrow(a, { cwd: repo });
   await git("init", "-q");

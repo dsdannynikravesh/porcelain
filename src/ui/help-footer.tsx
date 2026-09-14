@@ -51,7 +51,6 @@ export function HelpFooter({ expanded }: { expanded: boolean }) {
       <box style={{ height: 1, paddingLeft: 1, flexDirection: "row" }}>
         <text style={{ fg: theme.faint }}>
           {ESSENTIAL_KEYS.map(([k, d]) => `${k} ${d}`).join("  ·  ")}
-          {"  ·  ? more"}
         </text>
       </box>
     );

@@ -1,3 +1,4 @@
+export * from "./binary.js";
 export * from "./branches.js";
 export * from "./commit.js";
 export * from "./contributors.js";

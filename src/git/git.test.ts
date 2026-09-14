@@ -15,7 +15,7 @@ async function git(...args: string[]) {
 }
 
 beforeAll(async () => {
-  repo = realpathSync(mkdtempSync(join(tmpdir(), "gitpretty-test-")));
+  repo = realpathSync(mkdtempSync(join(tmpdir(), "porcelain-test-")));
   setGitCwd(repo);
   await git("init", "-q");
   await git("config", "user.email", "test@example.com");

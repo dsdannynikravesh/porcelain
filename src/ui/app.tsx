@@ -11,6 +11,7 @@ import { CommitBox, type CommitBoxHandle } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
 import { ConflictBanner } from "./conflict-banner.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
+import { FolderDiffPanel } from "./folder-diff-panel.js";
 import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
 import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
 import { firstHunkLine, openInEditor } from "./open-editor.js";
@@ -618,6 +619,14 @@ export function App() {
     );
   }
 
+  const selectedDirRow =
+    statusTab === "history"
+      ? null
+      : (model.rows.find(
+          (r): r is Extract<typeof r, { type: "dir" }> =>
+            r.key === model.selectedKey && r.type === "dir",
+        ) ?? null);
+
   const diffTitle =
     statusTab === "history"
       ? history.selectedPath
@@ -671,19 +680,34 @@ export function App() {
           }}
         />
 
-        <DiffPanel
-          ref={diffScrollRef}
-          title={diffTitle}
-          empty={statusTab === "history" ? history.commits.length === 0 : model.rows.length === 0}
-          diff={statusTab === "history" ? history.diff : model.diff}
-          loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
-          hunks={statusTab === "history" ? [] : model.hunks}
-          selectedHunkIndex={model.selectedHunkIndex}
-          view={diffView}
-          showLineNumbers={showLineNumbers}
-          wrap={wrapDiff}
-          width={diffWidth}
-        />
+        {selectedDirRow ? (
+          <FolderDiffPanel
+            ref={diffScrollRef}
+            title={` ${selectedDirRow.path}/  (${selectedDirRow.fileCount} file${selectedDirRow.fileCount === 1 ? "" : "s"}) `}
+            items={model.folderDiffs}
+            loading={model.folderDiffsLoading}
+            view={diffView}
+            showLineNumbers={showLineNumbers}
+            wrap={wrapDiff}
+            width={diffWidth}
+          />
+        ) : (
+          <DiffPanel
+            ref={diffScrollRef}
+            title={diffTitle}
+            empty={statusTab === "history" ? history.commits.length === 0 : model.rows.length === 0}
+            diff={statusTab === "history" ? history.diff : model.diff}
+            loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
+            binarySize={statusTab === "history" ? null : model.binarySize}
+            binarySizeLoading={statusTab === "history" ? false : model.binarySizeLoading}
+            hunks={statusTab === "history" ? [] : model.hunks}
+            selectedHunkIndex={model.selectedHunkIndex}
+            view={diffView}
+            showLineNumbers={showLineNumbers}
+            wrap={wrapDiff}
+            width={diffWidth}
+          />
+        )}
       </box>
 
       <CommitBox

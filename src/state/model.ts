@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { browse as gHBrowse } from "../gh/index.js";
 import {
+  type BinarySizeSides,
   type Branch,
   type CommitOutcome,
   type Contributor,
+  diffDirTracked,
   diffFile,
   discardFile,
   type FetchOutcome,
@@ -45,6 +47,7 @@ import {
   type RepoState,
   type RepoStateOutcome,
   type RepoStatus,
+  readBinarySizes,
   type SquashOutcome,
   type StashEntry,
   type StashOutcome,
@@ -69,6 +72,15 @@ export interface Toast {
   text: string;
 }
 
+/** One file's diff within a selected directory's stacked folder view. */
+export interface FolderDiffItem {
+  /** The matching SelectableEntry's key, so it can be `e`-opened like any other row. */
+  key: string;
+  path: string;
+  staged: boolean;
+  diff: FileDiff;
+}
+
 export interface RepoModel {
   status: RepoStatus | null;
   /** "clean" unless mid-merge or mid-rebase (detected from .git's own marker files). */
@@ -85,6 +97,14 @@ export interface RepoModel {
   selected: SelectableEntry | null;
   diff: FileDiff | null;
   diffLoading: boolean;
+  /** Before/after byte sizes for the selected diff, whenever it's binary —
+   *  null when `diff` isn't binary, or nothing's selected. */
+  binarySize: BinarySizeSides | null;
+  binarySizeLoading: boolean;
+  /** Every changed file's diff under the selected directory, stacked in path
+   *  order — [] unless a directory row is selected. */
+  folderDiffs: FolderDiffItem[];
+  folderDiffsLoading: boolean;
   /** Hunks of the currently-shown diff — [] when there's nothing hunk-stageable
    *  (no file selected, a conflicted/unmerged file, or a diff with no `@@` hunks). */
   hunks: Hunk[];
@@ -165,6 +185,10 @@ export function useRepoModel(): RepoModel {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [binarySize, setBinarySize] = useState<BinarySizeSides | null>(null);
+  const [binarySizeLoading, setBinarySizeLoading] = useState(false);
+  const [folderDiffs, setFolderDiffs] = useState<FolderDiffItem[]>([]);
+  const [folderDiffsLoading, setFolderDiffsLoading] = useState(false);
   const [selectedHunkIndex, setSelectedHunkIndexState] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -189,6 +213,8 @@ export function useRepoModel(): RepoModel {
   diffRef.current = diff;
 
   const diffReqRef = useRef(0);
+  const binarySizeReqRef = useRef(0);
+  const folderDiffReqRef = useRef(0);
   /** Rows as of the previous refresh, for index-based fallback selection. */
   const prevRowsRef = useRef<TreeRow[]>([]);
   /** Selection to apply on the next refresh, set by mutations. */
@@ -263,6 +289,80 @@ export function useRepoModel(): RepoModel {
       .finally(() => {
         if (diffReqRef.current === reqId) setDiffLoading(false);
       });
+  }, [selectedKey, entries]);
+
+  // Byte size of both sides of the same selection, whenever it's binary —
+  // waits on `diff` (rather than re-deriving "is this binary" itself) so it
+  // agrees with what the panel is actually showing.
+  useEffect(() => {
+    const current = entries.find((e) => e.key === selectedKey) ?? null;
+    if (!current || !diff?.binary) {
+      setBinarySize(null);
+      return;
+    }
+    const reqId = ++binarySizeReqRef.current;
+    setBinarySizeLoading(true);
+    readBinarySizes(current.entry, current.section === "staged")
+      .then((d) => {
+        if (binarySizeReqRef.current === reqId) setBinarySize(d);
+      })
+      .catch(() => {
+        if (binarySizeReqRef.current === reqId) setBinarySize(null);
+      })
+      .finally(() => {
+        if (binarySizeReqRef.current === reqId) setBinarySizeLoading(false);
+      });
+  }, [selectedKey, entries, diff]);
+
+  // Load every changed file's diff under a selected directory, stacked —
+  // lazygit-style. Tracked files come back in two batched `git diff` calls
+  // (one per section) instead of one call per file; untracked ones still
+  // need their own `--no-index` synthesis, same as the single-file path.
+  useEffect(() => {
+    const dirPath = selectedKey ? dirPathOf(selectedKey) : null;
+    if (!dirPath) {
+      setFolderDiffs([]);
+      return;
+    }
+    const descendants = entries.filter(
+      (e) => e.entry.path === dirPath || e.entry.path.startsWith(`${dirPath}/`),
+    );
+    const reqId = ++folderDiffReqRef.current;
+    setFolderDiffsLoading(true);
+    void (async () => {
+      try {
+        const tracked = descendants.filter((e) => !e.entry.untracked);
+        const untracked = descendants.filter((e) => e.entry.untracked);
+        const [unstagedMap, stagedMap, untrackedDiffs] = await Promise.all([
+          diffDirTracked(dirPath, false),
+          diffDirTracked(dirPath, true),
+          Promise.all(untracked.map((e) => diffFile(e.entry, false))),
+        ]);
+        if (folderDiffReqRef.current !== reqId) return;
+
+        const items: FolderDiffItem[] = [];
+        for (const e of tracked) {
+          const map = e.section === "staged" ? stagedMap : unstagedMap;
+          const d = map.get(e.entry.path);
+          if (d)
+            items.push({ key: e.key, path: e.entry.path, staged: e.section === "staged", diff: d });
+        }
+        untracked.forEach((e, i) => {
+          items.push({ key: e.key, path: e.entry.path, staged: false, diff: untrackedDiffs[i]! });
+        });
+        // Path order, unstaged before staged for the same file — matches
+        // how the tree itself orders a partially-staged file's two rows.
+        items.sort((a, b) => a.path.localeCompare(b.path) || Number(a.staged) - Number(b.staged));
+        setFolderDiffs(items);
+      } catch (err) {
+        if (folderDiffReqRef.current === reqId) {
+          setFolderDiffs([]);
+          setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+        }
+      } finally {
+        if (folderDiffReqRef.current === reqId) setFolderDiffsLoading(false);
+      }
+    })();
   }, [selectedKey, entries]);
 
   // Hunks of whatever diff is currently shown — never for a conflicted file
@@ -799,6 +899,10 @@ export function useRepoModel(): RepoModel {
     selected,
     diff,
     diffLoading,
+    binarySize,
+    binarySizeLoading,
+    folderDiffs,
+    folderDiffsLoading,
     hunks,
     selectedHunkIndex: clampedHunkIndex,
     moveHunk,

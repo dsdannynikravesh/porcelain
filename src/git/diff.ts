@@ -108,3 +108,56 @@ export async function diffFile(entry: FileEntry, staged: boolean): Promise<FileD
 
   return patchToFileDiff(patch, filetype);
 }
+
+/**
+ * Split a multi-file unified diff (as `git diff` emits for a directory
+ * pathspec — every file's patch back to back) into one raw patch per file,
+ * keyed by that file's current path (the "b/" side of its "diff --git"
+ * line, which is the same for a plain edit, the new name for a rename, and
+ * still the deleted path for a deletion — never /dev/null itself, that only
+ * ever shows up in the "+++ " line below it).
+ */
+function splitMultiFileDiff(raw: string): Map<string, string> {
+  const out = new Map<string, string>();
+  let path: string | null = null;
+  let lines: string[] = [];
+  const flush = () => {
+    if (path && lines.length > 0) out.set(path, lines.join("\n"));
+    lines = [];
+  };
+  for (const line of raw.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      flush();
+      // Doesn't handle the rare quoted-path form git uses for names with
+      // spaces/unicode (falls back to no match, so that file's block is
+      // silently dropped from the folder view rather than misattributed).
+      const m = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+      path = m ? m[2]! : null;
+    }
+    lines.push(line);
+  }
+  flush();
+  return out;
+}
+
+/**
+ * Unified diffs for every *tracked* file under `dirPath`, in one `git diff`
+ * call instead of one per file — the same worktree-vs-index/index-vs-HEAD
+ * split as `diffFile`, just scoped to a directory and batched. Untracked
+ * files aren't included (git has no bulk equivalent of the `--no-index`
+ * synthesis `diffFile` does per file); callers fetch those separately.
+ */
+export async function diffDirTracked(
+  dirPath: string,
+  staged: boolean,
+): Promise<Map<string, FileDiff>> {
+  const args = ["diff", "--no-color"];
+  if (staged) args.push("--staged");
+  args.push("--", dirPath);
+  const res = await runGit(args);
+  const out = new Map<string, FileDiff>();
+  for (const [path, patch] of splitMultiFileDiff(res.stdout)) {
+    out.set(path, patchToFileDiff(patch, filetypeFor(path)));
+  }
+  return out;
+}

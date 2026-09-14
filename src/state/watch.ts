@@ -23,6 +23,13 @@ export function useRepoWatch(onChange: () => void, delayMs = 250): void {
       // churn internally) exactly when entering/progressing/leaving a rebase.
       /(^|\/)(rebase-merge|rebase-apply)(\/|$)/.test(p);
 
+    // node_modules churns on its own (installs, caches) and is never
+    // something `git status` would show anyway (it's always gitignored) — a
+    // recursive watch that includes it fires a refresh (and, on a diff panel
+    // showing binary content, redoes real work) for changes no commit ever
+    // touches.
+    const ignoredDir = (p: string) => /(^|\/)node_modules(\/|$)/.test(p);
+
     let watcher: ReturnType<typeof watch> | null = null;
     try {
       watcher = watch(root, { recursive: true }, (_event, filename) => {
@@ -35,6 +42,7 @@ export function useRepoWatch(onChange: () => void, delayMs = 250): void {
           if (relevantGitPath(name)) fire();
           return;
         }
+        if (ignoredDir(name)) return;
         fire();
       });
     } catch {

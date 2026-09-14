@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compile a standalone gitpretty binary for the HOST platform.
+# Compile a standalone porcelain binary for the HOST platform.
 #
 # Cross-compilation is not possible here: OpenTUI ships its Zig renderer as a
 # per-platform native package (`@opentui/core-<os>-<arch>`), and only the host's
@@ -22,7 +22,7 @@ case "$os" in
   *) echo "unsupported host OS: $os" >&2; exit 1 ;;
 esac
 
-out="dist/gitpretty-${os}-${arch}"
+out="dist/porcelain-${os}-${arch}"
 echo "→ $out  (target $target)"
 bun build ./src/index.tsx --compile --target="$target" --outfile "$out"
 echo "done"

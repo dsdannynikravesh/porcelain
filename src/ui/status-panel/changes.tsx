@@ -28,6 +28,7 @@ function RowView({
   width,
   onSelect,
   onActivate,
+  pairedStaged,
 }: {
   row: TreeRow;
   selected: boolean;
@@ -35,6 +36,10 @@ function RowView({
   width: number;
   onSelect?: (key: string) => void;
   onActivate?: (key: string) => void;
+  /** True when this is the staged half of a partially-staged file, i.e. the
+   *  row directly above is the same path's unstaged half — the pair is drawn
+   *  as one entry instead of repeating the filename twice in a row. */
+  pairedStaged?: boolean;
 }) {
   const pad = 1 + row.depth * INDENT;
   const avail = Math.max(4, width - pad - 3);
@@ -62,6 +67,11 @@ function RowView({
         <>
           <text style={{ fg: fg ?? theme.dim }}>{row.collapsed ? "▸ " : "▾ "}</text>
           <text style={{ fg: fg ?? theme.fg, attributes: BOLD }}>{truncate(row.name, avail)}</text>
+        </>
+      ) : pairedStaged ? (
+        <>
+          <text style={{ fg: fg ?? theme.faint }}>{"  ↳ "}</text>
+          <text style={{ fg: fg ?? theme.added }}>staged ●</text>
         </>
       ) : (
         <>
@@ -102,17 +112,26 @@ export function StatusPanelChanges({
         </box>
       ) : null}
 
-      {rows.map((row) => (
-        <RowView
-          key={row.key}
-          row={row}
-          selected={row.key === selectedKey}
-          focused={focused}
-          width={width - 2}
-          onSelect={onSelect}
-          onActivate={onActivate}
-        />
-      ))}
+      {rows.map((row, i) => {
+        const prev = rows[i - 1];
+        const pairedStaged =
+          row.type === "file" &&
+          row.entry.section === "staged" &&
+          prev?.type === "file" &&
+          prev.entry.entry.path === row.entry.entry.path;
+        return (
+          <RowView
+            key={row.key}
+            row={row}
+            selected={row.key === selectedKey}
+            focused={focused}
+            width={width - 2}
+            onSelect={onSelect}
+            onActivate={onActivate}
+            pairedStaged={pairedStaged}
+          />
+        );
+      })}
     </scrollbox>
   );
 }

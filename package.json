@@ -1,11 +1,29 @@
 {
-  "name": "gitpretty",
+  "name": "porcelain",
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "A polished terminal Git client — see your changes, stage, and commit with ease.",
+  "description": "A fast, polished terminal Git client — status, staging, hunks, branches, stashes, conflicts, and undo, without leaving the keyboard.",
+  "license": "MIT",
+  "author": "Danny Nikravesh",
+  "homepage": "https://github.com/dsdannynikravesh/porcelain#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dsdannynikravesh/porcelain.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dsdannynikravesh/porcelain/issues"
+  },
+  "keywords": [
+    "git",
+    "tui",
+    "cli",
+    "terminal",
+    "opentui"
+  ],
   "bin": {
-    "gitpretty": "./src/index.tsx"
+    "porcelain": "./src/index.tsx",
+    "por": "./src/index.tsx"
   },
   "scripts": {
     "start": "bun run src/index.tsx",

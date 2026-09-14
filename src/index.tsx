@@ -11,7 +11,7 @@ async function main() {
 
   if (!root) {
     process.stderr.write(
-      `gitpretty: ${startDir} is not inside a git repository.\n` +
+      `porcelain: ${startDir} is not inside a git repository.\n` +
         `Run it from a repo, or 'git init' first.\n`,
     );
     process.exit(1);
@@ -44,6 +44,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`gitpretty: ${err instanceof Error ? err.stack : String(err)}\n`);
+  process.stderr.write(`porcelain: ${err instanceof Error ? err.stack : String(err)}\n`);
   process.exit(1);
 });
