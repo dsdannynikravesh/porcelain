@@ -106,7 +106,7 @@ export function StatusPanelChanges({
     // dashboard state, not a message pinned to the top-left corner.
     return (
       <box style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}>
-        <text style={{ fg: theme.faint }}>Nothing to commit — working tree clean.</text>
+        <text style={{ fg: theme.faint }}>Nothing to commit.</text>
       </box>
     );
   }
