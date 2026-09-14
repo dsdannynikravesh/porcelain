@@ -27,6 +27,7 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["s", "stash"],
   ["S", "squash to here (history tab)"],
   ["o", "open on GitHub"],
+  ["z", "undo (reflog)"],
   ["?", "help", true],
   ["q", "quit", true],
 ];

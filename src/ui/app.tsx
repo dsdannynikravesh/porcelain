@@ -13,6 +13,7 @@ import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
 import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
 import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
 import { firstHunkLine, openInEditor } from "./open-editor.js";
+import { ReflogPicker } from "./reflog-picker.js";
 import { StashPicker } from "./stash-picker.js";
 import { StatusBar } from "./status-bar.js";
 import { StatusPanelCommits } from "./status-panel/commits.js";
@@ -58,6 +59,8 @@ export function App() {
   const [stashIndex, setStashIndex] = useState(0);
   const [showCoAuthors, setShowCoAuthors] = useState(false);
   const [coAuthorIndex, setCoAuthorIndex] = useState(0);
+  const [showReflog, setShowReflog] = useState(false);
+  const [reflogIndex, setReflogIndex] = useState(0);
   /** Emails checked for the commit currently being composed. */
   const [coAuthors, setCoAuthors] = useState<ReadonlySet<string>>(new Set());
   const pickedCoAuthors = useMemo(
@@ -256,6 +259,27 @@ export function App() {
     void model.loadContributors();
   }, [model]);
 
+  const openReflogPicker = useCallback(() => {
+    setShowReflog(true);
+    setReflogIndex(0);
+    void model.loadReflog();
+  }, [model]);
+
+  const requestUndo = useCallback(() => {
+    const target = model.reflog[reflogIndex];
+    if (!target) return;
+    setConfirm({
+      title: "Undo to here",
+      body: `Moves HEAD back to ${target.shortSha} (${target.action}). Nothing is lost — everything since then comes back as staged changes.`,
+      command: `git reset --soft ${target.shortSha}`,
+      danger: true,
+      run: async () => {
+        setShowReflog(false);
+        await model.undoTo(target.sha);
+      },
+    });
+  }, [model, reflogIndex]);
+
   const requestStashDrop = useCallback(() => {
     const target = model.stashes[stashIndex];
     if (!target) return;
@@ -384,7 +408,21 @@ export function App() {
       return;
     }
 
-    // 6. Co-author picker owns all input while open (opened from list mode
+    // 6. Reflog (undo) picker owns all input while open.
+    if (showReflog) {
+      if (isKey(key, "escape")) {
+        setShowReflog(false);
+      } else if (isKey(key, "j") || isKey(key, "down")) {
+        setReflogIndex((i) => Math.min(i + 1, model.reflog.length - 1));
+      } else if (isKey(key, "k") || isKey(key, "up")) {
+        setReflogIndex((i) => Math.max(i - 1, 0));
+      } else if (isKey(key, "return")) {
+        requestUndo();
+      }
+      return;
+    }
+
+    // 7. Co-author picker owns all input while open (opened from list mode
     // via "C" — see priority 8 below. Not opened from inside the commit box:
     // any key safe to intercept there would also just type into the message).
     if (showCoAuthors) {
@@ -411,7 +449,7 @@ export function App() {
       return;
     }
 
-    // 7. Commit editor mode — let the textarea have the keys, only intercept a few.
+    // 8. Commit editor mode — let the textarea have the keys, only intercept a few.
     if (focus === "commit") {
       if (isKey(key, "escape")) {
         cancelCommit();
@@ -428,7 +466,7 @@ export function App() {
 
     const inHistory = statusTab === "history";
 
-    // 8. List mode.
+    // 9. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
     } else if (isKey(key, "q")) {
@@ -508,6 +546,8 @@ export function App() {
       if (inHistory && historyFocus === "commits") startSquash();
     } else if (isKey(key, "o")) {
       void model.browse();
+    } else if (isKey(key, "z")) {
+      openReflogPicker();
     }
   });
 
@@ -639,6 +679,7 @@ export function App() {
           checked={coAuthors}
         />
       ) : null}
+      {showReflog ? <ReflogPicker entries={model.reflog} selectedIndex={reflogIndex} /> : null}
     </box>
   );
 }

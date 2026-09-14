@@ -15,6 +15,7 @@ import {
   fetch as gitFetch,
   pull as gitPull,
   push as gitPush,
+  resetSoftTo as gitResetSoftTo,
   squashToHead as gitSquash,
   stageAll as gitStageAll,
   stashApply as gitStashApply,
@@ -25,10 +26,12 @@ import {
   unstageAll as gitUnstageAll,
   listBranches,
   listContributors,
+  listReflog,
   listStashes,
   type PullOutcome,
   type PushOptions,
   type PushOutcome,
+  type ReflogEntry,
   type RepoStatus,
   type SquashOutcome,
   type StashEntry,
@@ -36,6 +39,7 @@ import {
   type SwitchOutcome,
   stageFile,
   status,
+  type UndoOutcome,
   unstageFile,
 } from "../git/index.js";
 import { ancestorDirs, buildTreeRows, type TreeRow } from "./tree.js";
@@ -101,6 +105,11 @@ export interface RepoModel {
   contributors: Contributor[];
   /** Refetches this repo's contributor list — call when opening the co-author picker. */
   loadContributors: () => Promise<void>;
+  reflog: ReflogEntry[];
+  /** Refetches the reflog — call when opening the undo picker. */
+  loadReflog: () => Promise<void>;
+  /** Soft-resets HEAD to `sha` — undoes everything since, kept as staged changes. */
+  undoTo: (sha: string) => Promise<UndoOutcome>;
   setToast: (t: Toast | null) => void;
   /** Opens this repo on github.com via `gh browse` (a no-op toast if `gh` isn't installed/authed). */
   browse: () => Promise<void>;
@@ -133,6 +142,7 @@ export function useRepoModel(): RepoModel {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [contributors, setContributors] = useState<Contributor[]>([]);
+  const [reflog, setReflog] = useState<ReflogEntry[]>([]);
 
   const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
 
@@ -593,6 +603,33 @@ export function useRepoModel(): RepoModel {
     }
   }, []);
 
+  const loadReflog = useCallback(async () => {
+    try {
+      setReflog(await listReflog());
+    } catch (err) {
+      setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+    }
+  }, []);
+
+  const undoTo = useCallback(
+    async (sha: string): Promise<UndoOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Undoing";
+      setBusy("Undoing");
+      try {
+        const outcome = await gitResetSoftTo(sha);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await refresh();
+        await loadReflog();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh, loadReflog],
+  );
+
   const browse = useCallback(async () => {
     const outcome = await gHBrowse();
     setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
@@ -650,6 +687,9 @@ export function useRepoModel(): RepoModel {
     stashDrop,
     contributors,
     loadContributors,
+    reflog,
+    loadReflog,
+    undoTo,
     setToast,
     browse,
   };

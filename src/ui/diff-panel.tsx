@@ -73,12 +73,17 @@ export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
 
   let body: React.ReactNode;
   if (!title) {
+    // A quiet dashboard state, not just an instruction — centered, like the
+    // rest of this app's overlays, rather than pinned to the top-left corner.
     body = (
-      <box style={{ padding: 1, flexDirection: "column", gap: 1 }}>
-        <text style={{ fg: theme.faint }}>Select a file to see its diff.</text>
-        <box style={{ flexDirection: "row" }}>
-          <text style={{ fg: theme.accent, attributes: BOLD }}>o</text>
-          <text style={{ fg: theme.faint }}>{"  view this repo on GitHub"}</text>
+      <box style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}>
+        <box style={{ flexDirection: "column", alignItems: "center", gap: 1 }}>
+          <text style={{ fg: theme.dim, attributes: BOLD }}>Nothing to show</text>
+          <text style={{ fg: theme.faint }}>Select a file to see its diff</text>
+          <box style={{ flexDirection: "row", marginTop: 1 }}>
+            <text style={{ fg: theme.accent, attributes: BOLD }}>o</text>
+            <text style={{ fg: theme.faint }}>{"  open this repo on GitHub"}</text>
+          </box>
         </box>
       </box>
     );

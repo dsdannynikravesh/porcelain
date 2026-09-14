@@ -21,7 +21,10 @@ export function Confirm({ request }: { request: ConfirmRequest }) {
         justifyContent: "center",
         alignItems: "center",
         backgroundColor: theme.bg,
-        zIndex: 100,
+        // Highest of any overlay — Confirm can be triggered from within any
+        // other picker (e.g. undo/reflog, stash drop), and must render above
+        // whichever one is still logically "open" underneath it.
+        zIndex: 200,
       }}
     >
       <box

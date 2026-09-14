@@ -7,6 +7,7 @@ export * from "./fetch.js";
 export * from "./log.js";
 export * from "./pull.js";
 export * from "./push.js";
+export * from "./reflog.js";
 export * from "./squash.js";
 export * from "./stage.js";
 export * from "./stash.js";
