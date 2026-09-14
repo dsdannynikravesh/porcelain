@@ -14,6 +14,9 @@ interface Props {
    *  Null means nothing is selected. Callers build the exact text (e.g. the
    *  " (staged)" suffix, or a short sha) since that's source-specific. */
   title: string | null;
+  /** True when the list next to this panel has nothing in it at all (a
+   *  clean tree, or no commits) — distinct from "has items, none picked". */
+  empty: boolean;
   diff: FileDiff | null;
   loading: boolean;
   view: "split" | "unified";
@@ -46,7 +49,7 @@ function Message({ children }: { children: string }) {
 }
 
 export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
-  { title, diff, loading, view, showLineNumbers, wrap, width },
+  { title, empty, diff, loading, view, showLineNumbers, wrap, width },
   ref,
 ) {
   const diffRef = useRef<DiffRenderable | null>(null);
@@ -72,19 +75,26 @@ export const DiffPanel = forwardRef<DiffScrollHandle, Props>(function DiffPanel(
   const boxTitle = title ?? " Diff ";
 
   let body: React.ReactNode;
-  if (!title) {
-    // A quiet dashboard state, not just an instruction — centered, like the
+  if (!title && empty) {
+    // Literally nothing to show — a quiet dashboard state, centered like the
     // rest of this app's overlays, rather than pinned to the top-left corner.
     body = (
       <box style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}>
         <box style={{ flexDirection: "column", alignItems: "center", gap: 1 }}>
           <text style={{ fg: theme.dim, attributes: BOLD }}>Nothing to show</text>
-          <text style={{ fg: theme.faint }}>Select a file to see its diff</text>
           <box style={{ flexDirection: "row", marginTop: 1 }}>
             <text style={{ fg: theme.accent, attributes: BOLD }}>o</text>
             <text style={{ fg: theme.faint }}>{"  open this repo on GitHub"}</text>
           </box>
         </box>
+      </box>
+    );
+  } else if (!title) {
+    // Items exist, just nothing picked yet — a different message from the
+    // empty-tree case above, but centered the same way.
+    body = (
+      <box style={{ flexGrow: 1, flexShrink: 1, justifyContent: "center", alignItems: "center" }}>
+        <text style={{ fg: theme.faint }}>Select a file to see its diff</text>
       </box>
     );
   } else if (loading && !diff) {

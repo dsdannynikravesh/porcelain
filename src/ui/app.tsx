@@ -622,6 +622,7 @@ export function App() {
         <DiffPanel
           ref={diffScrollRef}
           title={diffTitle}
+          empty={statusTab === "history" ? history.commits.length === 0 : model.rows.length === 0}
           diff={statusTab === "history" ? history.diff : model.diff}
           loading={statusTab === "history" ? history.diffLoading : model.diffLoading}
           view={diffView}
