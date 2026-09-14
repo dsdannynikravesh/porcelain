@@ -96,7 +96,10 @@ export function StatusPanelCommits({
 
       <scrollbox
         ref={scrollboxRef}
-        focused={focused}
+        // App-level keyboard handling owns j/k and arrows. A focused OpenTUI
+        // scrollbox would also consume those keys and scroll by a viewport
+        // fraction, making the list jump while selection moves one row.
+        focused={false}
         style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
       >
         {commits.length === 0 ? (
