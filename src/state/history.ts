@@ -70,13 +70,20 @@ export function useCommitHistory(): HistoryModel {
   const refresh = useCallback(async () => {
     try {
       const list = await listCommits(PAGE_SIZE, 0);
-      nextSkipRef.current = list.length;
-      hasMoreRef.current = list.length === PAGE_SIZE;
-      setCommits(list);
+      // A watch refresh happens independently of paging. Keep pages that have
+      // already been fetched instead of snapping back to the first 100 commits
+      // (and losing the user's selection) whenever the worktree changes.
+      const olderLoaded = commitsRef.current.slice(PAGE_SIZE);
+      const known = new Set(list.map((commit) => commit.sha));
+      const merged = [...list, ...olderLoaded.filter((commit) => !known.has(commit.sha))];
+      const hadMore = hasMoreRef.current;
+      nextSkipRef.current = merged.length;
+      hasMoreRef.current = list.length === PAGE_SIZE && (olderLoaded.length === 0 || hadMore);
+      setCommits(merged);
       setError(null);
       // Keep the current selection if it's still around, otherwise land on HEAD.
       setSelectedSha((prev) =>
-        prev && list.some((c) => c.sha === prev) ? prev : (list[0]?.sha ?? null),
+        prev && merged.some((c) => c.sha === prev) ? prev : (merged[0]?.sha ?? null),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
