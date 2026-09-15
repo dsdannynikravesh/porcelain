@@ -35,12 +35,12 @@ export function getGitCwd(): string {
  */
 export function runGit(
   args: string[],
-  opts: { cwd?: string; input?: string } = {},
+  opts: { cwd?: string; input?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<GitResult> {
   return new Promise((resolve, reject) => {
     const child = spawn("git", args, {
       cwd: opts.cwd ?? cachedCwd,
-      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" },
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: "0", ...opts.env },
     });
 
     let stdout = "";

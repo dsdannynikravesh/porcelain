@@ -129,6 +129,8 @@ export interface RepoModel {
   toggleCollapsed: (key?: string) => void;
   setCollapsed: (key: string, collapsed: boolean) => void;
   toggleStage: () => Promise<void>;
+  /** Stages every file Git currently marks unmerged; used by conflict continue. */
+  stageConflictFiles: () => Promise<boolean>;
   stageAll: () => Promise<void>;
   unstageAll: () => Promise<void>;
   discardSelected: () => Promise<void>;
@@ -562,6 +564,24 @@ export function useRepoModel(): RepoModel {
     () => runMutation(() => gitStageAll(), "Staging all changes", "Staged all changes"),
     [runMutation],
   );
+  const stageConflictFiles = useCallback(async (): Promise<boolean> => {
+    if (busyRef.current) return false;
+    const conflicts = entriesRef.current.filter((item) => item.entry.unmerged);
+    if (conflicts.length === 0) return true;
+    busyRef.current = "Staging resolved conflicts";
+    setBusy("Staging resolved conflicts");
+    try {
+      await Promise.all(conflicts.map((item) => stageFile(item.entry)));
+      await refresh();
+      return true;
+    } catch (err) {
+      setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+      return false;
+    } finally {
+      busyRef.current = null;
+      setBusy(null);
+    }
+  }, [refresh]);
   const unstageAll = useCallback(
     () => runMutation(() => gitUnstageAll(), "Unstaging everything", "Unstaged everything"),
     [runMutation],
@@ -985,6 +1005,7 @@ export function useRepoModel(): RepoModel {
     toggleCollapsed,
     setCollapsed,
     toggleStage,
+    stageConflictFiles,
     stageAll,
     unstageAll,
     discardSelected,

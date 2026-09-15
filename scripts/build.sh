@@ -25,4 +25,18 @@ esac
 out="dist/porcelain-${os}-${arch}"
 echo "→ $out  (target $target)"
 bun build ./src/index.tsx --compile --target="$target" --outfile "$out"
+
+# Bun executables cannot run OpenTUI's Tree-sitter worker from their virtual
+# filesystem. Keep its worker, grammars, and native renderer next to the binary.
+asset_dir="${out}.assets"
+core_assets="${asset_dir}/@opentui/core"
+mkdir -p "$core_assets" "${asset_dir}/web-tree-sitter" "${asset_dir}/@opentui/core-${os}-${arch}"
+cp node_modules/@opentui/core/parser.worker.js "$core_assets/parser.worker.js"
+cp -R node_modules/@opentui/core/assets "$core_assets/"
+cp node_modules/web-tree-sitter/tree-sitter.wasm "${asset_dir}/web-tree-sitter/tree-sitter.wasm"
+case "$os" in
+  darwin) native_lib="libopentui.dylib" ;;
+  linux) native_lib="libopentui.so" ;;
+esac
+cp "node_modules/@opentui/core-${os}-${arch}/${native_lib}" "${asset_dir}/@opentui/core-${os}-${arch}/${native_lib}"
 echo "done"

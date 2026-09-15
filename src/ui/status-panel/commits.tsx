@@ -48,15 +48,20 @@ function CommitRowView({
         if (e.button === 0) onSelect?.(commit.sha);
       }}
       style={{
-        flexDirection: "row",
-        height: 1,
+        flexDirection: "column",
+        height: 2,
         paddingLeft: 1,
         paddingRight: 1,
         backgroundColor: bg,
       }}
     >
-      <text style={{ fg: fg ?? theme.accent, attributes: BOLD }}>{`${commit.shortSha} `}</text>
-      <text style={{ fg: fg ?? theme.fg }}>{truncate(commit.subject, avail)}</text>
+      <box style={{ flexDirection: "row", height: 1 }}>
+        <text style={{ fg: fg ?? theme.accent, attributes: BOLD }}>{`${commit.shortSha} `}</text>
+        <text style={{ fg: fg ?? theme.fg }}>{truncate(commit.subject, avail)}</text>
+      </box>
+      <text
+        style={{ fg: fg ?? theme.faint }}
+      >{`${commit.author || "Unknown author"}${commit.date ? `  ·  ${commit.date}` : ""}`}</text>
     </box>
   );
 }
@@ -93,7 +98,6 @@ export function StatusPanelCommits({
           {loadingMore ? `  ${commits.length}…` : `  ${commits.length}`}
         </text>
       </box>
-
       <scrollbox
         ref={scrollboxRef}
         // App-level keyboard handling owns j/k and arrows. A focused OpenTUI

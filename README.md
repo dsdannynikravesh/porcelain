@@ -43,9 +43,9 @@ inspiration.
   branches shown alongside locals (checking one out creates its local branch
   automatically, same as `git switch <name>`'s own DWIM behavior)
 - **Stash** — push, pop, apply, drop
-- **Conflict handling** — a persistent banner appears the moment a merge or
-  rebase pauses on conflicts; resolve files with your own `$EDITOR`, stage
-  them, then continue or abort right from the keyboard
+- **Conflict handling** — a blocking resolution dialog lists every conflicted
+  file during a merge or rebase; open one in `$EDITOR` with `e`, stage it, then
+  continue or abort right from the keyboard
 - **Undo via reflog** — browse recent HEAD movements and soft-reset back to
   any of them, so nothing is ever truly unrecoverable
 - **`gh` integration** — open the current repo on GitHub with one key
@@ -71,8 +71,8 @@ This runs the app directly from the clone. To install a standalone
 
 ### Standalone binary
 
-No Bun required to _run_ it — only to build it. This compiles a single
-self-contained executable for your current OS/arch:
+No Bun required to _run_ it — only to build it. This compiles an executable
+and its runtime-assets directory for your current OS/arch:
 
 ```bash
 bun run build      # writes dist/porcelain-<host-os>-<arch>
@@ -83,7 +83,8 @@ optionally symlink `por` alongside it:
 
 ```bash
 mkdir -p "$HOME/.local/bin"
-cp dist/porcelain-* "$HOME/.local/bin/porcelain"
+cp dist/porcelain-<host-os>-<arch> "$HOME/.local/bin/porcelain"
+cp -R dist/porcelain-<host-os>-<arch>.assets "$HOME/.local/bin/porcelain.assets"
 chmod +x "$HOME/.local/bin/porcelain"
 ln -sf porcelain "$HOME/.local/bin/por"
 ```
@@ -92,7 +93,8 @@ To make it available to every user on the machine, install it system-wide
 instead:
 
 ```bash
-sudo install -Dm755 dist/porcelain-* /usr/local/bin/porcelain
+sudo install -Dm755 dist/porcelain-<host-os>-<arch> /usr/local/bin/porcelain
+sudo cp -R dist/porcelain-<host-os>-<arch>.assets /usr/local/bin/porcelain.assets
 sudo ln -sfn /usr/local/bin/porcelain /usr/local/bin/por
 ```
 

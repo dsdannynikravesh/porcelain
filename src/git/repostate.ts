@@ -45,9 +45,10 @@ function summarize(output: string): string {
 }
 
 export async function continueRebase(): Promise<RepoStateOutcome> {
-  // No editor prompt to worry about: git reuses each replayed commit's own
-  // message automatically unless --edit is passed, which this never does.
-  const res = await runGit(["rebase", "--continue"]);
+  // An interactive rebase can still invoke the commit-message editor during
+  // --continue. The TUI owns the terminal, so reuse Git's prepared message
+  // instead of leaving a hidden editor process waiting forever.
+  const res = await runGit(["rebase", "--continue"], { env: { GIT_EDITOR: "true" } });
   if (res.code !== 0) {
     return {
       ok: false,

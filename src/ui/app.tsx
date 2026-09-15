@@ -1,6 +1,7 @@
 import type { KeyEvent } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type GitHubReference, listOpenReferences } from "../gh/index.js";
 import { checkoutName, getGitCwd, lastCommitMessage, withCoAuthors } from "../git/index.js";
 import { useCommitHistory } from "../state/history.js";
 import { useRepoModel } from "../state/model.js";
@@ -9,12 +10,13 @@ import { BranchPicker } from "./branch-picker.js";
 import { CoAuthorPicker } from "./co-author-picker.js";
 import { CommitBox, type CommitBoxHandle, type CommitField } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
-import { ConflictBanner } from "./conflict-banner.js";
+import { ConflictResolution } from "./conflict-resolution.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
 import { FolderDiffPanel } from "./folder-diff-panel.js";
 import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
 import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
 import { firstHunkLine, openInEditor } from "./open-editor.js";
+import { ReferencePicker } from "./reference-picker.js";
 import { ReflogPicker } from "./reflog-picker.js";
 import { StashPicker } from "./stash-picker.js";
 import { StatusBar } from "./status-bar.js";
@@ -65,6 +67,12 @@ export function App() {
   const [coAuthorIndex, setCoAuthorIndex] = useState(0);
   const [showReflog, setShowReflog] = useState(false);
   const [reflogIndex, setReflogIndex] = useState(0);
+  const [referenceQuery, setReferenceQuery] = useState<string | null>(null);
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const [references, setReferences] = useState<GitHubReference[] | null>(null);
+  const [referencesLoading, setReferencesLoading] = useState(false);
+  const [referenceIndex, setReferenceIndex] = useState(0);
+  const [conflictIndex, setConflictIndex] = useState(0);
   /** Emails checked for the commit currently being composed. */
   const [coAuthors, setCoAuthors] = useState<ReadonlySet<string>>(new Set());
   const pickedCoAuthors = useMemo(
@@ -96,6 +104,52 @@ export function App() {
   const commitsWidth = Math.max(24, Math.min(42, Math.floor(width * 0.22)));
   const diffWidth = Math.max(20, width - listWidth - (statusTab === "history" ? commitsWidth : 0));
   const stagedCount = model.status?.staged.length ?? 0;
+  const conflictEntries = useMemo(
+    () => model.entries.filter((item) => item.entry.unmerged),
+    [model.entries],
+  );
+  const pendingConflictEntries = useMemo(
+    () => model.entries.filter((item) => !item.entry.unmerged && item.section === "unstaged"),
+    [model.entries],
+  );
+  const conflictActionEntries =
+    conflictEntries.length > 0 ? conflictEntries : pendingConflictEntries;
+
+  useEffect(() => {
+    setConflictIndex((index) => Math.max(0, Math.min(index, conflictActionEntries.length - 1)));
+  }, [conflictActionEntries.length]);
+  const referenceSuggestions = useMemo(() => {
+    if (referenceQuery === null || !references) return [];
+    const query = referenceQuery.toLowerCase();
+    return references
+      .filter(
+        (reference) =>
+          String(reference.number).startsWith(query) ||
+          reference.title.toLowerCase().includes(query),
+      )
+      .slice(0, 6);
+  }, [referenceQuery, references]);
+
+  useEffect(() => {
+    if (referenceQuery === null || references) return;
+    let current = true;
+    setReferencesLoading(true);
+    void listOpenReferences()
+      .then((result) => {
+        if (current) setReferences(result);
+      })
+      .catch(() => {
+        // GitHub completion is optional; a missing `gh` login should never
+        // interfere with composing a normal commit message.
+        if (current) setReferences([]);
+      })
+      .finally(() => {
+        if (current) setReferencesLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [referenceQuery, references]);
 
   const enterCommit = useCallback(() => {
     setCommitField("summary");
@@ -220,6 +274,14 @@ export function App() {
     });
     void model.refresh();
   }, [model, renderer]);
+
+  const openConflictInEditor = useCallback(
+    async (path: string) => {
+      await openInEditor(renderer, { file: path, cwd: getGitCwd() });
+      void model.refresh();
+    },
+    [model, renderer],
+  );
 
   const openBranchPicker = useCallback(() => {
     setShowBranches(true);
@@ -389,7 +451,49 @@ export function App() {
       return;
     }
 
-    // 2. Help overlay.
+    // 2. A stopped merge/rebase blocks ordinary navigation until every
+    // conflicted file is resolved and staged. Abort remains available through
+    // the usual confirmation path.
+    if (model.repoState !== "clean") {
+      const conflict = conflictActionEntries[conflictIndex];
+      if (isKey(key, "G")) {
+        requestAbortConflict();
+      } else if (isKey(key, "r")) {
+        void model.refresh();
+      } else if (conflict && (isKey(key, "up") || isKey(key, "down"))) {
+        setConflictIndex((index) => {
+          const delta = isKey(key, "up") ? -1 : 1;
+          return Math.max(0, Math.min(index + delta, conflictActionEntries.length - 1));
+        });
+      } else if (conflict && isKey(key, "e")) {
+        void openConflictInEditor(conflict.entry.path);
+      } else if (conflict && isKey(key, "space")) {
+        model.select(conflict.key);
+        void model.toggleStage();
+      } else if (conflict && isKey(key, "g")) {
+        // Match GitHub Desktop's flow: once the user has saved the resolution,
+        // `g` stages only the formerly-conflicted files, then continues.
+        void (async () => {
+          if (conflictEntries.length > 0) {
+            if (await model.stageConflictFiles()) await model.continueConflict();
+          } else {
+            model.select(conflict.key);
+            await model.toggleStage();
+            await model.continueConflict();
+          }
+        })();
+      } else if (conflict && isKey(key, "c")) {
+        model.setToast({
+          kind: "err",
+          text: "Stage the remaining worktree changes first",
+        });
+      } else if (!conflict && (isKey(key, "c") || isKey(key, "g"))) {
+        void model.continueConflict();
+      }
+      return;
+    }
+
+    // 3. Help overlay.
     if (showHelp) {
       if (isKey(key, "escape") || key.name === "?" || (key.name === "/" && key.shift)) {
         setShowHelp(false);
@@ -504,7 +608,34 @@ export function App() {
       return;
     }
 
-    // 8. Commit editor mode — let the summary/description fields have the
+    // 8. GitHub issue/PR completion owns navigation only while its dropdown
+    // is visible. Letter keys deliberately keep going to the commit field.
+    if (
+      focus === "commit" &&
+      referenceOpen &&
+      (referencesLoading || referenceSuggestions.length > 0)
+    ) {
+      if (isKey(key, "escape")) {
+        key.preventDefault();
+        setReferenceOpen(false);
+        return;
+      } else if ((isKey(key, "up") || isKey(key, "down")) && referenceSuggestions.length > 0) {
+        key.preventDefault();
+        setReferenceIndex((index) => {
+          const delta = isKey(key, "up") ? -1 : 1;
+          return Math.max(0, Math.min(index + delta, referenceSuggestions.length - 1));
+        });
+        return;
+      } else if (isKey(key, "return") && referenceSuggestions.length > 0) {
+        key.preventDefault();
+        const reference = referenceSuggestions[referenceIndex];
+        if (reference) commitRef.current?.insertReference(reference.number);
+        setReferenceOpen(false);
+        return;
+      }
+    }
+
+    // 9. Commit editor mode — let the summary/description fields have the
     // keys, only intercept a few. Tab steps forward through summary ->
     // description -> back to the list (leaving the box); Shift+Tab steps
     // the same sequence in reverse.
@@ -538,7 +669,7 @@ export function App() {
 
     const inHistory = statusTab === "history";
 
-    // 9. List mode.
+    // 10. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
     } else if (isKey(key, "q")) {
@@ -682,8 +813,6 @@ export function App() {
         busy={model.busy}
         toast={model.toast}
       />
-      <ConflictBanner repoState={model.repoState} />
-
       <box style={{ flexDirection: "row", flexGrow: 1, flexShrink: 1 }}>
         {statusTab === "history" ? (
           <StatusPanelCommits
@@ -751,9 +880,35 @@ export function App() {
         coAuthors={pickedCoAuthors}
         generating={model.generatingCommitMessage}
         onGenerate={runGenerate}
+        onReferenceQuery={(query) => {
+          setReferenceQuery(query);
+          setReferenceOpen(query !== null);
+          setReferenceIndex(0);
+        }}
       />
 
+      {focus === "commit" &&
+      referenceOpen &&
+      (referencesLoading || referenceSuggestions.length > 0) ? (
+        <ReferencePicker
+          references={referenceSuggestions}
+          selectedIndex={referenceIndex}
+          loading={referencesLoading}
+        />
+      ) : null}
+
       <HelpFooter expanded={false} />
+
+      {model.repoState !== "clean" ? (
+        <ConflictResolution
+          repoState={model.repoState}
+          paths={conflictEntries.map((item) => item.entry.path)}
+          pendingPaths={pendingConflictEntries.map((item) => item.entry.path)}
+          selectedIndex={conflictIndex}
+          busy={model.busy !== null}
+          notice={model.toast?.kind === "err" ? model.toast.text : undefined}
+        />
+      ) : null}
 
       {showHelp ? (
         <box

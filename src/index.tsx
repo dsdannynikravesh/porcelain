@@ -1,11 +1,28 @@
 #!/usr/bin/env bun
-import { createCliRenderer } from "@opentui/core";
-import { createRoot } from "@opentui/react";
-import { setGHCwd } from "./gh/index.js";
-import { findRepoRoot, setGitCwd } from "./git/index.js";
-import { App } from "./ui/app.js";
+import { existsSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+
+/** Configure copied OpenTUI assets before importing OpenTUI itself. */
+function configureStandaloneAssets() {
+  const assetRoot = `${realpathSync(process.execPath)}.assets`;
+  if (existsSync(join(assetRoot, "@opentui/core/parser.worker.js"))) {
+    process.env.OTUI_ASSET_ROOT = assetRoot;
+  }
+}
 
 async function main() {
+  configureStandaloneAssets();
+
+  // React imports core internally, so let core finish its async module setup
+  // before loading React (parallel evaluation creates a circular-init error).
+  const { createCliRenderer } = await import("@opentui/core");
+  const { createRoot } = await import("@opentui/react");
+  const [{ setGHCwd }, { findRepoRoot, setGitCwd }, { App }] = await Promise.all([
+    import("./gh/index.js"),
+    import("./git/index.js"),
+    import("./ui/app.js"),
+  ]);
+
   const startDir = process.cwd();
   const root = await findRepoRoot(startDir);
 

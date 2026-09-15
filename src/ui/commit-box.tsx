@@ -16,6 +16,8 @@ export interface CommitBoxHandle {
   /** Sets both fields directly — the Copilot-generate flow already has them
    *  as separate strings, so this skips `setText`'s split heuristic. */
   setGenerated: (title: string, description: string) => void;
+  /** Replaces the `#` token immediately before the active field's cursor. */
+  insertReference: (number: number) => void;
   /** Plain Enter submits (see app.tsx), so a newline in the description has
    *  to be driven explicitly — the textarea's own default binding only
    *  fires on an unmodified Enter, not "Enter regardless of modifiers." */
@@ -37,6 +39,8 @@ interface Props {
   /** True while a Copilot commit-message request is in flight. */
   generating: boolean;
   onGenerate: () => void;
+  /** The partial issue/PR number immediately before the cursor, after `#`. */
+  onReferenceQuery: (query: string | null) => void;
 }
 
 /** A small pill, GitHub Desktop–style — one per picked co-author. */
@@ -57,7 +61,17 @@ function CoAuthorChip({ name }: { name: string }) {
 }
 
 export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
-  { focused, field, amend, squashCount, stagedCount, coAuthors, generating, onGenerate },
+  {
+    focused,
+    field,
+    amend,
+    squashCount,
+    stagedCount,
+    coAuthors,
+    generating,
+    onGenerate,
+    onReferenceQuery,
+  },
   ref,
 ) {
   const summaryRef = useRef<InputRenderable | null>(null);
@@ -89,7 +103,24 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
     insertNewline: () => {
       descriptionRef.current?.newLine();
     },
+    insertReference: (number: number) => {
+      const target = field === "summary" ? summaryRef.current : descriptionRef.current;
+      if (!target) return;
+      const beforeCursor = target.plainText.slice(0, target.cursorOffset);
+      const match = /(?:^|[^\w])#\d*$/.exec(beforeCursor);
+      if (!match) return;
+      const start = target.cursorOffset - match[0].length + match[0].lastIndexOf("#");
+      target.setSelection(start, target.cursorOffset);
+      target.insertText(`#${number}`);
+    },
   }));
+
+  const updateReferenceQuery = (target: InputRenderable | TextareaRenderable | null) => {
+    if (!target) return onReferenceQuery(null);
+    const beforeCursor = target.plainText.slice(0, target.cursorOffset);
+    const match = /(?:^|[^\w])#(\d*)$/.exec(beforeCursor);
+    onReferenceQuery(match?.[1] ?? null);
+  };
 
   const hint = amend
     ? "amending HEAD"
@@ -123,6 +154,7 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
         backgroundColor={theme.panelBg}
         focusedBackgroundColor={theme.panelBg}
         textColor={theme.fg}
+        onInput={() => updateReferenceQuery(summaryRef.current)}
       />
       <box style={{ border: ["top"], borderColor: theme.border, height: 1 }} />
       <textarea
@@ -134,6 +166,7 @@ export const CommitBox = forwardRef<CommitBoxHandle, Props>(function CommitBox(
         focusedBackgroundColor={theme.panelBg}
         textColor={theme.fg}
         style={{ flexGrow: 1 }}
+        onContentChange={() => updateReferenceQuery(descriptionRef.current)}
       />
       {hasCoAuthors ? (
         <box style={{ flexDirection: "row", height: 1, paddingLeft: 1, gap: 1 }}>
