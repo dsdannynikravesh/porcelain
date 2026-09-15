@@ -39,7 +39,8 @@ function CommitRowView({
   // row elsewhere so the selection doesn't just disappear when focus moves.
   const fg = selected && focused ? theme.selectionFg : undefined;
   const bg = selected ? (focused ? theme.selectionBg : theme.selectionBgMuted) : undefined;
-  const avail = Math.max(4, width - 1 - commit.shortSha.length - 2);
+  const separator = " · ";
+  const avail = Math.max(4, width - 1 - commit.shortSha.length - separator.length - 2);
 
   return (
     <box
@@ -56,7 +57,8 @@ function CommitRowView({
       }}
     >
       <box style={{ flexDirection: "row", height: 1 }}>
-        <text style={{ fg: fg ?? theme.accent, attributes: BOLD }}>{`${commit.shortSha} `}</text>
+        <text style={{ fg: fg ?? theme.accent, attributes: BOLD }}>{commit.shortSha}</text>
+        <text style={{ fg: fg ?? theme.dim }}>{separator}</text>
         <text style={{ fg: fg ?? theme.fg }}>{truncate(commit.subject, avail)}</text>
       </box>
       <text

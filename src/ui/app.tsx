@@ -931,7 +931,9 @@ export function App() {
       ) : null}
 
       {confirm ? <Confirm request={confirm} /> : null}
-      {showBranches ? <BranchPicker branches={model.branches} selectedIndex={branchIndex} /> : null}
+      {showBranches ? (
+        <BranchPicker branches={model.branches} selectedIndex={branchIndex} terminalHeight={height} />
+      ) : null}
       {showNewBranch ? <NewBranchPrompt ref={newBranchRef} /> : null}
       {showStash ? (
         <StashPicker

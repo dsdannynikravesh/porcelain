@@ -6,6 +6,8 @@ export interface Branch {
   current: boolean;
   /** True for a remote-tracking branch with no local branch of its own yet. */
   remote: boolean;
+  /** Unix timestamp of the ref's most recent commit, used for picker ordering. */
+  lastCommitAt: number;
 }
 
 export interface SwitchOutcome {
@@ -30,12 +32,16 @@ export function checkoutName(branch: Branch): string {
  * creates that local branch, same as `git switch <name>` would from the CLI).
  */
 export async function listBranches(): Promise<Branch[]> {
-  const localRaw = await runGitOrThrow(["branch", `--format=%(HEAD)${FIELD_SEP}%(refname:short)`]);
+  const localRaw = await runGitOrThrow([
+    "branch",
+    "--sort=-committerdate",
+    `--format=%(HEAD)${FIELD_SEP}%(refname:short)${FIELD_SEP}%(committerdate:unix)`,
+  ]);
   const local: Branch[] = localRaw
     .split("\n")
     .map((line) => {
-      const [head, name] = line.split(FIELD_SEP);
-      return { name: name ?? "", current: head === "*", remote: false };
+      const [head, name, lastCommitAt] = line.split(FIELD_SEP);
+      return { name: name ?? "", current: head === "*", remote: false, lastCommitAt: Number(lastCommitAt) || 0 };
     })
     .filter((b) => b.name);
   const localNames = new Set(local.map((b) => b.name));
@@ -43,21 +49,24 @@ export async function listBranches(): Promise<Branch[]> {
   const remoteRaw = await runGitOrThrow([
     "branch",
     "-r",
-    `--format=%(refname:short)${FIELD_SEP}%(symref)`,
+    "--sort=-committerdate",
+    `--format=%(refname:short)${FIELD_SEP}%(symref)${FIELD_SEP}%(committerdate:unix)`,
   ]);
   const remote: Branch[] = remoteRaw
     .split("\n")
     .map((line) => {
-      const [name, symref] = line.split(FIELD_SEP);
-      return { name: name ?? "", symref: symref ?? "" };
+      const [name, symref, lastCommitAt] = line.split(FIELD_SEP);
+      return { name: name ?? "", symref: symref ?? "", lastCommitAt: Number(lastCommitAt) || 0 };
     })
     // Drop the "<remote>/HEAD" pointer (git shows it with a non-empty symref,
     // distinct from a real branch ref) and anything already tracked locally.
     .filter((b) => b.name && !b.symref)
-    .map((b): Branch => ({ name: b.name, current: false, remote: true }))
+    .map((b): Branch => ({ name: b.name, current: false, remote: true, lastCommitAt: b.lastCommitAt }))
     .filter((b) => !localNames.has(checkoutName(b)));
 
-  return [...local, ...remote];
+  return [...local, ...remote].sort(
+    (a, b) => Number(b.current) - Number(a.current) || b.lastCommitAt - a.lastCommitAt || a.name.localeCompare(b.name),
+  );
 }
 
 function summarize(output: string): string {
