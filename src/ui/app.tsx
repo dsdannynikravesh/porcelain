@@ -30,6 +30,10 @@ type HistoryFocus = "commits" | "files";
 
 /** Match a KeyEvent against a target like "a", "A" (shift+a), "space", "escape". */
 function isKey(key: KeyEvent, target: string): boolean {
+  // App hotkeys are deliberately plain keystrokes. Modifiers belong to the
+  // focused input (or an explicitly handled shortcut such as Ctrl+G in the
+  // commit composer), never to navigation/staging actions.
+  if (key.ctrl || key.meta || key.option) return false;
   if (target.length === 1 && target >= "A" && target <= "Z") {
     return key.name === target.toLowerCase() && key.shift;
   }
@@ -761,6 +765,8 @@ export function App() {
       if (model.repoState !== "clean") void model.continueConflict();
     } else if (isKey(key, "G")) {
       if (model.repoState !== "clean") requestAbortConflict();
+    } else if (key.name === "g" && key.ctrl) {
+      if (!inHistory && stagedCount > 0 && !model.generatingCommitMessage) runGenerate();
     }
   });
 
