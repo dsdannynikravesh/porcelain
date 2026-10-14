@@ -7,34 +7,23 @@ export type GenerateCommitMessageOutcome =
   | { ok: false; message: string };
 
 /**
- * `gh copilot -- <copilot-cli flags>`. `-s` and `--output-format text`
- * suppress the banner/decoration so stdout is just the model's answer;
- * `--stream off` returns one final blob instead of incremental chunks;
- * `--no-custom-instructions` keeps a repo's own copilot-instructions.md from
- * mixing into a prompt this app already fully controls. Same flags this
- * author's earlier `gh-copilot-commit` tool settled on for this exact task.
+ * `gh copilot -- <copilot-cli flags>`. The current Copilot CLI's prompt mode
+ * writes its final answer directly to stdout. `--no-custom-instructions`
+ * keeps a repo's own instructions from mixing into a prompt this app already
+ * fully controls. The child process's `cwd` is set by `runGHCopilot`, so no
+ * CLI directory flag is necessary.
  */
-function buildArgs(prompt: string, cwd: string | undefined, model: string | undefined): string[] {
-  const args = [
-    "-p",
-    prompt,
-    "-s",
-    "--output-format",
-    "text",
-    "--stream",
-    "off",
-    "--no-custom-instructions",
-  ];
-  if (cwd) args.push("-C", cwd);
+function buildArgs(prompt: string, model: string | undefined): string[] {
+  const args = ["-p", prompt, "--allow-all-tools", "--no-custom-instructions"];
   if (model) args.push("--model", model);
   return args;
 }
 
-/** Overridable per-machine without a rebuild; `gpt-5-mini` is fast and cheap
- *  enough for a short JSON summary — the default this author's prior
- *  `gh-copilot-commit` tool already settled on for this exact task. */
+/** Overridable per-machine without a rebuild. `gpt-5` is supported by the
+ * current GitHub Copilot CLI; an unsupported model makes the CLI fail before
+ * it can process the prompt. */
 function defaultModel(): string | undefined {
-  return process.env.PORCELAIN_COPILOT_MODEL || "gpt-5-mini";
+  return process.env.PORCELAIN_COPILOT_MODEL || "gpt-5";
 }
 
 /** Generates a commit title/description from a diff via `gh copilot`. Never
@@ -46,7 +35,7 @@ export async function generateCommitMessage(
   opts: { cwd?: string } = {},
 ): Promise<GenerateCommitMessageOutcome> {
   const prompt = buildCommitMessagePrompt(diff);
-  const args = buildArgs(prompt, opts.cwd, defaultModel());
+  const args = buildArgs(prompt, defaultModel());
 
   let res: Awaited<ReturnType<typeof runGHCopilot>>;
   try {
@@ -74,7 +63,7 @@ export async function generateCommitMessage(
     return {
       ok: false,
       message: needsLogin
-        ? "GitHub Copilot isn't signed in — run `gh copilot -- login` (or `copilot login`) first."
+        ? "GitHub Copilot isn't signed in — run `gh auth login` first."
         : detail || `gh copilot exited with code ${res.code}`,
     };
   }
