@@ -43,6 +43,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@github/copilot-sdk": "^1.0.24",
     "@opentui/core": "^0.5.11",
     "@opentui/react": "^0.5.11",
     "react": "^19.3.0"
