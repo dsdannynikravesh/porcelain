@@ -3,10 +3,9 @@ import { randomBytes } from "node:crypto";
 /**
  * Ported verbatim from GitHub Desktop's own Copilot commit-message feature
  * (`app/src/lib/stores/copilot-store.ts`, `CommitMessageSystemPrompt`) — same
- * wording, same title/description JSON contract. GitHub Desktop sends this
- * as a proper system message to the Copilot SDK; the `gh copilot` CLI has no
- * separate system-prompt flag, so `buildCommitMessagePrompt` below prepends
- * it to the user turn instead.
+ * wording, same title/description JSON contract. Sent the same way Desktop
+ * sends it: as a proper system message (`systemMessage: {mode: "append"}`)
+ * via the Copilot SDK, not prepended to the user turn.
  */
 export const COMMIT_MESSAGE_SYSTEM_PROMPT = `You're an AI assistant whose job is to concisely summarize code changes into
 short, useful commit messages, with a title and a description.
@@ -54,8 +53,4 @@ ${diff}
 ${close}
 
 Generate the commit title and description for this changeset now.`;
-}
-
-export function buildCommitMessagePrompt(diff: string): string {
-  return `${COMMIT_MESSAGE_SYSTEM_PROMPT}\n\n${buildCommitMessageUserPrompt(diff)}`;
 }
