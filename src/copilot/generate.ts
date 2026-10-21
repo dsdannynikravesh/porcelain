@@ -19,11 +19,12 @@ function buildArgs(prompt: string, model: string | undefined): string[] {
   return args;
 }
 
-/** Overridable per-machine without a rebuild. `gpt-5` is supported by the
- * current GitHub Copilot CLI; an unsupported model makes the CLI fail before
- * it can process the prompt. */
+/** Overridable per-machine without a rebuild. Defaults to `auto` (Copilot
+ * picks) because which named models exist varies by account and plan — an
+ * unavailable one (e.g. `gpt-5`) makes the CLI fail before it reads the
+ * prompt. */
 function defaultModel(): string | undefined {
-  return process.env.PORCELAIN_COPILOT_MODEL || "gpt-5";
+  return process.env.PORCELAIN_COPILOT_MODEL || "auto";
 }
 
 /** Generates a commit title/description from a diff via `gh copilot`. Never

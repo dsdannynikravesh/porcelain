@@ -2,6 +2,8 @@
 // from the flat change list in state/tree.ts. Directory rows carry a
 // `dir:<path>` key; file rows carry the SelectableEntry key.
 
+import type { ScrollBoxRenderable } from "@opentui/core";
+import { useEffect, useRef } from "react";
 import type { TreeRow } from "../../state/tree.js";
 import { BOLD, kindBadge, kindColor, theme } from "../theme.js";
 
@@ -50,6 +52,7 @@ function RowView({
 
   return (
     <box
+      id={`row-${row.key}`}
       onMouseDown={(e) => {
         if (e.button !== 0) return;
         if (selected) onActivate?.(row.key);
@@ -101,6 +104,14 @@ export function StatusPanelChanges({
   onSelect,
   onActivate,
 }: Props) {
+  const scrollboxRef = useRef<ScrollBoxRenderable>(null);
+
+  // Keep the selected row visible as j/k moves it, scrolling only as far as
+  // needed rather than jumping by a viewport fraction.
+  useEffect(() => {
+    if (selectedKey) scrollboxRef.current?.scrollChildIntoView(`row-${selectedKey}`);
+  }, [selectedKey]);
+
   if (rows.length === 0) {
     // Centered like the diff panel's own "Nothing to show" — a quiet
     // dashboard state, not a message pinned to the top-left corner.
@@ -113,7 +124,11 @@ export function StatusPanelChanges({
 
   return (
     <scrollbox
-      focused={focused}
+      ref={scrollboxRef}
+      // App-level keyboard handling owns j/k and arrows. A focused OpenTUI
+      // scrollbox would also consume those keys and scroll by a viewport
+      // fraction, making the list jump while selection moves one row.
+      focused={false}
       style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
     >
       {rows.map((row, i) => {

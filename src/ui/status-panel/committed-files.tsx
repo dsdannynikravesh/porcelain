@@ -3,6 +3,8 @@
 // working-tree concept that doesn't apply here). Reuses the same kind
 // badge/color conventions as changes.tsx's file rows.
 
+import type { ScrollBoxRenderable } from "@opentui/core";
+import { useEffect, useRef } from "react";
 import type { CommitFileEntry } from "../../git/index.js";
 import { BOLD, kindBadge, kindColor, theme } from "../theme.js";
 
@@ -40,6 +42,7 @@ function RowView({
 
   return (
     <box
+      id={`file-${file.path}`}
       onMouseDown={(e) => {
         if (e.button === 0) onSelect?.(file.path);
       }}
@@ -60,6 +63,12 @@ function RowView({
 }
 
 export function CommittedFiles({ files, selectedPath, focused, width, onSelect }: Props) {
+  const scrollboxRef = useRef<ScrollBoxRenderable>(null);
+
+  useEffect(() => {
+    if (selectedPath) scrollboxRef.current?.scrollChildIntoView(`file-${selectedPath}`);
+  }, [selectedPath]);
+
   if (files.length === 0) {
     // Centered like the diff panel's own "Nothing to show" — a quiet
     // dashboard state, not a message pinned to the top-left corner.
@@ -72,7 +81,9 @@ export function CommittedFiles({ files, selectedPath, focused, width, onSelect }
 
   return (
     <scrollbox
-      focused={focused}
+      ref={scrollboxRef}
+      // See changes.tsx: app-level key handling owns j/k, not the scrollbox.
+      focused={false}
       style={{ flexGrow: 1, rootOptions: { backgroundColor: theme.panelBg } }}
     >
       {files.map((f) => (
