@@ -2,7 +2,21 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { getGitCwd, runGit } from "./exec.js";
 
-export type RepoState = "clean" | "merging" | "rebasing";
+export type RepoState = "clean" | "merging" | "rebasing" | "reverting" | "cherry-picking";
+
+/** The git subcommand behind a paused operation, e.g. "cherry-pick" — for labels and confirms. */
+export function operationName(state: Exclude<RepoState, "clean">): string {
+  switch (state) {
+    case "rebasing":
+      return "rebase";
+    case "merging":
+      return "merge";
+    case "reverting":
+      return "revert";
+    case "cherry-picking":
+      return "cherry-pick";
+  }
+}
 
 export interface RepoStateOutcome {
   ok: boolean;
@@ -28,6 +42,12 @@ export async function getRepoState(): Promise<RepoState> {
   }
   if (existsSync(join(dir, "MERGE_HEAD"))) {
     return "merging";
+  }
+  if (existsSync(join(dir, "REVERT_HEAD"))) {
+    return "reverting";
+  }
+  if (existsSync(join(dir, "CHERRY_PICK_HEAD"))) {
+    return "cherry-picking";
   }
   return "clean";
 }
@@ -82,4 +102,59 @@ export async function abortMerge(): Promise<RepoStateOutcome> {
     return { ok: false, message: summarize(res.stderr || res.stdout) || "merge --abort failed" };
   }
   return { ok: true, message: "Merge aborted — back to where you started" };
+}
+
+// Revert and cherry-pick share the sequencer, so their continue/abort are the
+// same shape — GIT_EDITOR=true for the same hidden-editor reason as rebase.
+async function continueSequencer(cmd: "revert" | "cherry-pick"): Promise<RepoStateOutcome> {
+  const res = await runGit([cmd, "--continue"], { env: { GIT_EDITOR: "true" } });
+  if (res.code !== 0) {
+    return {
+      ok: false,
+      message: summarize(res.stderr || res.stdout) || `${cmd} --continue failed`,
+    };
+  }
+  return {
+    ok: true,
+    message: summarize(res.stdout) || `${cmd === "revert" ? "Revert" : "Cherry-pick"} completed`,
+  };
+}
+
+async function abortSequencer(cmd: "revert" | "cherry-pick"): Promise<RepoStateOutcome> {
+  const res = await runGit([cmd, "--abort"]);
+  if (res.code !== 0) {
+    return { ok: false, message: summarize(res.stderr || res.stdout) || `${cmd} --abort failed` };
+  }
+  return {
+    ok: true,
+    message: `${cmd === "revert" ? "Revert" : "Cherry-pick"} aborted — back to where you started`,
+  };
+}
+
+/** Continues whichever operation `state` says is paused. */
+export function continueOperation(state: Exclude<RepoState, "clean">): Promise<RepoStateOutcome> {
+  switch (state) {
+    case "rebasing":
+      return continueRebase();
+    case "merging":
+      return continueMerge();
+    case "reverting":
+      return continueSequencer("revert");
+    case "cherry-picking":
+      return continueSequencer("cherry-pick");
+  }
+}
+
+/** Aborts whichever operation `state` says is paused. */
+export function abortOperation(state: Exclude<RepoState, "clean">): Promise<RepoStateOutcome> {
+  switch (state) {
+    case "rebasing":
+      return abortRebase();
+    case "merging":
+      return abortMerge();
+    case "reverting":
+      return abortSequencer("revert");
+    case "cherry-picking":
+      return abortSequencer("cherry-pick");
+  }
 }

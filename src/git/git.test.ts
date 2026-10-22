@@ -2,11 +2,15 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cherryPick } from "./cherrypick.js";
 import { commit } from "./commit.js";
 import { diffFile } from "./diff.js";
 import { findRepoRoot, runGit, runGitOrThrow, setGitCwd } from "./exec.js";
+import { listCommits } from "./log.js";
 import { push } from "./push.js";
 import { defaultPushRemote } from "./remotes.js";
+import { abortOperation, continueOperation, getRepoState } from "./repostate.js";
+import { revertCommit } from "./revert.js";
 import { stageFile, unstageFile } from "./stage.js";
 import { status } from "./status.js";
 
@@ -139,4 +143,73 @@ test("push with setUpstream publishes a new branch and tracks it", async () => {
     await git("remote", "remove", "origin").catch(() => {});
     rmSync(remote, { recursive: true, force: true });
   }
+});
+
+async function commitFile(name: string, content: string, message: string) {
+  writeFileSync(join(repo, name), content);
+  await git("add", name);
+  await git("commit", "-q", "-m", message);
+}
+
+test("revertCommit adds an undo commit", async () => {
+  await git("stash", "-q", "-u").catch(() => {});
+  await commitFile("rev.txt", "one\n", "add rev");
+  await commitFile("rev.txt", "two\n", "change rev");
+  const [head] = await listCommits(1);
+  const outcome = await revertCommit(head!.sha);
+  expect(outcome.ok).toBe(true);
+  const [after] = await listCommits(1);
+  expect(after!.subject).toBe('Revert "change rev"');
+  expect(await Bun.file(join(repo, "rev.txt")).text()).toBe("one\n");
+});
+
+test("a conflicting revert pauses as 'reverting' and can be aborted", async () => {
+  await commitFile("conf.txt", "base\n", "conf base");
+  await commitFile("conf.txt", "mid\n", "conf mid");
+  const [mid] = await listCommits(1);
+  await commitFile("conf.txt", "top\n", "conf top");
+
+  const outcome = await revertCommit(mid!.sha);
+  expect(outcome.ok).toBe(false);
+  expect(await getRepoState()).toBe("reverting");
+
+  const aborted = await abortOperation("reverting");
+  expect(aborted.ok).toBe(true);
+  expect(await getRepoState()).toBe("clean");
+});
+
+test("listCommits notInHead + cherryPick bring commits over oldest-first", async () => {
+  await git("switch", "-q", "-c", "pick-source");
+  await commitFile("p1.txt", "1\n", "pick one");
+  await commitFile("p2.txt", "2\n", "pick two");
+  await git("switch", "-q", "-");
+
+  const candidates = await listCommits(50, 0, { notInHead: "pick-source" });
+  expect(candidates.map((c) => c.subject)).toEqual(["pick two", "pick one"]);
+
+  const outcome = await cherryPick(candidates.map((c) => c.sha).reverse());
+  expect(outcome.ok).toBe(true);
+  const top = await listCommits(2);
+  expect(top.map((c) => c.subject)).toEqual(["pick two", "pick one"]);
+
+  // Patch-equivalent commits are now on HEAD, so --cherry-pick hides them.
+  expect(await listCommits(50, 0, { notInHead: "pick-source" })).toHaveLength(0);
+});
+
+test("a conflicting cherry-pick pauses as 'cherry-picking' and continues once resolved", async () => {
+  await git("switch", "-q", "-c", "pick-conflict");
+  await commitFile("cp.txt", "theirs\n", "cp theirs");
+  const [theirs] = await listCommits(1);
+  await git("switch", "-q", "-");
+  await commitFile("cp.txt", "ours\n", "cp ours");
+
+  expect((await cherryPick([theirs!.sha])).ok).toBe(false);
+  expect(await getRepoState()).toBe("cherry-picking");
+
+  writeFileSync(join(repo, "cp.txt"), "resolved\n");
+  await git("add", "cp.txt");
+  expect((await continueOperation("cherry-picking")).ok).toBe(true);
+  expect(await getRepoState()).toBe("clean");
+  const [head] = await listCommits(1);
+  expect(head!.subject).toBe("cp theirs");
 });

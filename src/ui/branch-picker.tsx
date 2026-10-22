@@ -94,7 +94,9 @@ export function BranchPicker({ branches, selectedIndex, terminalHeight }: Props)
                     backgroundColor: selected ? theme.selectionBg : undefined,
                   }}
                 >
-                  <box style={{ flexDirection: "row", justifyContent: "space-between", flexGrow: 1 }}>
+                  <box
+                    style={{ flexDirection: "row", justifyContent: "space-between", flexGrow: 1 }}
+                  >
                     <text style={{ fg, attributes: b.current ? BOLD : undefined }}>
                       {`${b.current ? "● " : "  "}${branchName}`}
                     </text>
@@ -106,7 +108,7 @@ export function BranchPicker({ branches, selectedIndex, terminalHeight }: Props)
           </scrollbox>
         )}
         <text style={{ fg: theme.dim }}>
-          j / k move · enter switch · n new · m merge · d delete · Esc cancel
+          j / k move · enter switch · n new · m merge · c cherry-pick · d delete · Esc
         </text>
       </box>
     </box>

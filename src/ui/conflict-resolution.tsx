@@ -1,4 +1,4 @@
-import type { RepoState } from "../git/index.js";
+import { operationName, type RepoState } from "../git/index.js";
 import { BOLD, theme } from "./theme.js";
 
 interface Props {
@@ -18,7 +18,8 @@ export function ConflictResolution({
   busy,
   notice,
 }: Props) {
-  const operation = repoState === "rebasing" ? "Rebase" : "Merge";
+  const name = repoState === "clean" ? "merge" : operationName(repoState);
+  const operation = name.charAt(0).toUpperCase() + name.slice(1);
   const remainingPaths = [...paths, ...pendingPaths];
   const resolved = remainingPaths.length === 0;
 

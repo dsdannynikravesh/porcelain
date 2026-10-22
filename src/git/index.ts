@@ -1,5 +1,6 @@
 export * from "./binary.js";
 export * from "./branches.js";
+export * from "./cherrypick.js";
 export * from "./commit.js";
 export * from "./contributors.js";
 export * from "./diff.js";
@@ -12,6 +13,7 @@ export * from "./push.js";
 export * from "./reflog.js";
 export * from "./remotes.js";
 export * from "./repostate.js";
+export * from "./revert.js";
 export * from "./squash.js";
 export * from "./stage.js";
 export * from "./stash.js";

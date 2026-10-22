@@ -15,15 +15,27 @@ export interface CommitEntry {
 const FIELD_SEP = "\x1f";
 const RECORD_SEP = "\x1e";
 
+export interface ListCommitsOptions {
+  /** Only commits on `branch` that HEAD doesn't have yet — ignoring any whose
+   *  patch HEAD already contains (already cherry-picked), via --cherry-pick. */
+  notInHead?: string;
+}
+
 /** Read one page of commits. `skip` is the history cursor for the next page. */
-export async function listCommits(limit = 100, skip = 0): Promise<CommitEntry[]> {
-  const raw = await runGitOrThrow([
+export async function listCommits(
+  limit = 100,
+  skip = 0,
+  opts: ListCommitsOptions = {},
+): Promise<CommitEntry[]> {
+  const args = [
     "log",
     `--skip=${skip}`,
     `--max-count=${limit}`,
     "--date=short",
     `--pretty=format:%H${FIELD_SEP}%h${FIELD_SEP}%an${FIELD_SEP}%ad${FIELD_SEP}%s${RECORD_SEP}`,
-  ]);
+  ];
+  if (opts.notInHead) args.push("--cherry-pick", "--right-only", `HEAD...${opts.notInHead}`, "--");
+  const raw = await runGitOrThrow(args);
 
   const commits: CommitEntry[] = [];
   for (const record of raw.split(RECORD_SEP)) {

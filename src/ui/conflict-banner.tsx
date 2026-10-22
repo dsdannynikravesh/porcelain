@@ -1,4 +1,4 @@
-import type { RepoState } from "../git/index.js";
+import { operationName, type RepoState } from "../git/index.js";
 import { BOLD, theme } from "./theme.js";
 
 /**
@@ -10,8 +10,8 @@ import { BOLD, theme } from "./theme.js";
 export function ConflictBanner({ repoState }: { repoState: RepoState }) {
   if (repoState === "clean") return null;
 
-  const label =
-    repoState === "rebasing" ? "Rebase paused on conflicts" : "Merge paused on conflicts";
+  const name = operationName(repoState);
+  const label = `${name.charAt(0).toUpperCase()}${name.slice(1)} paused on conflicts`;
 
   return (
     <box

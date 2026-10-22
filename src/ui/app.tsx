@@ -3,16 +3,20 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type GitHubReference, listOpenReferences } from "../gh/index.js";
 import {
+  type CommitEntry,
   checkoutName,
   defaultPushRemote,
   getGitCwd,
   lastCommitMessage,
+  listCommits,
+  operationName,
   withCoAuthors,
 } from "../git/index.js";
 import { useCommitHistory } from "../state/history.js";
 import { useRepoModel } from "../state/model.js";
 import { useRepoWatch } from "../state/watch.js";
 import { BranchPicker } from "./branch-picker.js";
+import { CherryPickPicker } from "./cherry-pick-picker.js";
 import { CoAuthorPicker } from "./co-author-picker.js";
 import { CommitBox, type CommitBoxHandle, type CommitField } from "./commit-box.js";
 import { Confirm, type ConfirmRequest } from "./confirm.js";
@@ -82,6 +86,13 @@ export function App() {
   const [references, setReferences] = useState<GitHubReference[] | null>(null);
   const [referencesLoading, setReferencesLoading] = useState(false);
   const [referenceIndex, setReferenceIndex] = useState(0);
+  /** Set while the cherry-pick picker is open: the source branch and its commits (null while loading). */
+  const [cherryPick, setCherryPick] = useState<{
+    branch: string;
+    commits: CommitEntry[] | null;
+  } | null>(null);
+  const [cherryIndex, setCherryIndex] = useState(0);
+  const [cherryChecked, setCherryChecked] = useState<ReadonlySet<string>>(new Set());
   const [conflictIndex, setConflictIndex] = useState(0);
   /** Emails checked for the commit currently being composed. */
   const [coAuthors, setCoAuthors] = useState<ReadonlySet<string>>(new Set());
@@ -359,6 +370,72 @@ export function App() {
     });
   }, [model, branchIndex, history]);
 
+  const openCherryPick = useCallback(() => {
+    const target = model.branches[branchIndex];
+    if (!target) return;
+    if (target.current) {
+      model.setToast({ kind: "err", text: "Pick a different branch to cherry-pick from" });
+      return;
+    }
+    setShowBranches(false);
+    setCherryPick({ branch: target.name, commits: null });
+    setCherryIndex(0);
+    setCherryChecked(new Set());
+    void listCommits(200, 0, { notInHead: target.name })
+      .then((commits) =>
+        setCherryPick((cur) => (cur?.branch === target.name ? { ...cur, commits } : cur)),
+      )
+      .catch((err) => {
+        setCherryPick(null);
+        model.setToast({ kind: "err", text: err instanceof Error ? err.message : String(err) });
+      });
+  }, [model, branchIndex]);
+
+  const requestCherryPick = useCallback(() => {
+    const commits = cherryPick?.commits;
+    if (!commits || commits.length === 0) return;
+    // Nothing checked means "just the one under the cursor", like the stash
+    // picker acting on its current row. Applied oldest-first either way, so
+    // a run of dependent commits lands in the order it was written.
+    const picked =
+      cherryChecked.size > 0
+        ? commits.filter((c) => cherryChecked.has(c.sha))
+        : commits.slice(cherryIndex, cherryIndex + 1);
+    const shas = picked.map((c) => c.sha).reverse();
+    if (shas.length === 0) return;
+    setConfirm({
+      title: "Cherry-pick",
+      body: `Apply ${shas.length} commit${shas.length === 1 ? "" : "s"} from ${cherryPick.branch} onto your current branch. If one conflicts, the conflict dialog takes over.`,
+      command: `git cherry-pick ${picked
+        .map((c) => c.shortSha)
+        .reverse()
+        .join(" ")}`,
+      run: async () => {
+        setCherryPick(null);
+        await model.cherryPick(shas);
+        void history.refresh();
+      },
+    });
+  }, [cherryPick, cherryChecked, cherryIndex, model, history]);
+
+  const requestRevert = useCallback(() => {
+    const target = history.commits.find((c) => c.sha === history.selectedSha);
+    if (!target) return;
+    if (model.entries.length > 0) {
+      model.setToast({ kind: "err", text: "Commit or stash your changes before reverting" });
+      return;
+    }
+    setConfirm({
+      title: "Revert commit",
+      body: `Adds a new commit that undoes ${target.shortSha} ("${target.subject}"). History is kept, so this is safe even if it's already pushed.`,
+      command: `git revert --no-edit ${target.shortSha}`,
+      run: async () => {
+        await model.revert(target.sha);
+        void history.refresh();
+      },
+    });
+  }, [history, model]);
+
   const openStashPicker = useCallback(() => {
     setShowStash(true);
     setStashIndex(0);
@@ -407,7 +484,8 @@ export function App() {
   }, [model, stashIndex]);
 
   const requestAbortConflict = useCallback(() => {
-    const kind = model.repoState === "rebasing" ? "rebase" : "merge";
+    if (model.repoState === "clean") return;
+    const kind = operationName(model.repoState);
     setConfirm({
       title: `Abort ${kind}`,
       body: `Stops the ${kind} and puts things back exactly how they were before it started. Any conflict resolutions you've made so far are discarded.`,
@@ -587,6 +665,33 @@ export function App() {
         requestMergeBranch();
       } else if (isKey(key, "d")) {
         requestDeleteBranch();
+      } else if (isKey(key, "c")) {
+        openCherryPick();
+      }
+      return;
+    }
+
+    // 4b. Cherry-pick picker owns all input while open.
+    if (cherryPick) {
+      const commits = cherryPick.commits ?? [];
+      if (isKey(key, "escape")) {
+        setCherryPick(null);
+      } else if (isKey(key, "j") || isKey(key, "down")) {
+        setCherryIndex((i) => Math.min(i + 1, commits.length - 1));
+      } else if (isKey(key, "k") || isKey(key, "up")) {
+        setCherryIndex((i) => Math.max(i - 1, 0));
+      } else if (isKey(key, "space")) {
+        const sha = commits[cherryIndex]?.sha;
+        if (sha) {
+          setCherryChecked((prev) => {
+            const next = new Set(prev);
+            if (next.has(sha)) next.delete(sha);
+            else next.add(sha);
+            return next;
+          });
+        }
+      } else if (isKey(key, "return")) {
+        requestCherryPick();
       }
       return;
     }
@@ -806,6 +911,8 @@ export function App() {
       openStashPicker();
     } else if (isKey(key, "S")) {
       if (inHistory && historyFocus === "commits") startSquash();
+    } else if (isKey(key, "R")) {
+      if (inHistory && historyFocus === "commits") requestRevert();
     } else if (isKey(key, "o")) {
       void model.browse();
     } else if (isKey(key, "y")) {
@@ -1006,6 +1113,15 @@ export function App() {
         />
       ) : null}
       {showNewBranch ? <NewBranchPrompt ref={newBranchRef} /> : null}
+      {cherryPick ? (
+        <CherryPickPicker
+          branch={cherryPick.branch}
+          commits={cherryPick.commits}
+          selectedIndex={cherryIndex}
+          checked={cherryChecked}
+          terminalHeight={height}
+        />
+      ) : null}
       {showStash ? (
         <StashPicker
           stashes={model.stashes}

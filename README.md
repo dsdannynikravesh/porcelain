@@ -39,9 +39,10 @@ inspiration.
   committing. Requires the `gh` CLI, the `gh-copilot` extension, and an
   active Copilot subscription — everything else falls back to a normal
   two-field commit box if it's missing
-- **Branches** — switch, create, delete, and merge, with remote-tracking
+- **Branches** — switch, create, delete, merge, and cherry-pick from, with remote-tracking
   branches shown alongside locals (checking one out creates its local branch
   automatically, same as `git switch <name>`'s own DWIM behavior)
+- **Revert** any commit from the history view, history-safe
 - **Stash** — push, pop, apply, drop
 - **Conflict handling** — a blocking resolution dialog lists every conflicted
   file during a merge or rebase; open one in `$EDITOR` with `e`, stage it, then
@@ -138,13 +139,14 @@ publish them as GitHub Release assets.
 | `n`       | toggle diff line numbers                             |
 | `r`       | refresh                                              |
 | `t`       | toggle the commit history view                       |
-| `b`       | switch / create / merge / delete a branch            |
+| `b`       | switch / create / merge / delete / cherry-pick from a branch |
 | `s`       | stash (push / pop / apply / drop)                    |
 | `S`       | squash commits (history view)                        |
+| `R`       | revert the selected commit (history view)            |
 | `o`       | open this repo on GitHub                             |
 | `y` / `Y` | copy path or commit sha / commit subject (OSC 52)    |
 | `z`       | undo — browse the reflog and reset back to any point |
-| `g` / `G` | continue / abort a paused merge or rebase            |
+| `g` / `G` | continue / abort a paused merge, rebase, revert, or cherry-pick |
 | `?`       | help                                                 |
 | `q`       | quit                                                 |
 

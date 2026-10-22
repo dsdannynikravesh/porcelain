@@ -4,6 +4,7 @@ import { browse as gHBrowse } from "../gh/index.js";
 import {
   type BinarySizeSides,
   type Branch,
+  type CherryPickOutcome,
   type CommitOutcome,
   type Contributor,
   diffDirTracked,
@@ -15,11 +16,10 @@ import {
   type FileEntry,
   getGitCwd,
   getRepoState,
-  abortMerge as gitAbortMerge,
-  abortRebase as gitAbortRebase,
+  abortOperation as gitAbortOperation,
+  cherryPick as gitCherryPick,
   commit as gitCommit,
-  continueMerge as gitContinueMerge,
-  continueRebase as gitContinueRebase,
+  continueOperation as gitContinueOperation,
   createBranch as gitCreateBranch,
   deleteBranch as gitDeleteBranch,
   fetch as gitFetch,
@@ -27,6 +27,7 @@ import {
   pull as gitPull,
   push as gitPush,
   resetSoftTo as gitResetSoftTo,
+  revertCommit as gitRevert,
   squashToHead as gitSquash,
   stageAll as gitStageAll,
   stageHunk as gitStageHunk,
@@ -50,6 +51,7 @@ import {
   type RepoState,
   type RepoStateOutcome,
   type RepoStatus,
+  type RevertOutcome,
   readBinarySizes,
   type SquashOutcome,
   type StashEntry,
@@ -86,11 +88,11 @@ export interface FolderDiffItem {
 
 export interface RepoModel {
   status: RepoStatus | null;
-  /** "clean" unless mid-merge or mid-rebase (detected from .git's own marker files). */
+  /** "clean" unless mid-merge/rebase/revert/cherry-pick (detected from .git's own marker files). */
   repoState: RepoState;
-  /** Runs `git rebase --continue` or `git commit --no-edit` (finishing a merge), whichever `repoState` calls for. */
+  /** Continues the paused rebase / merge / revert / cherry-pick, whichever `repoState` calls for. */
   continueConflict: () => Promise<RepoStateOutcome>;
-  /** Runs `git rebase --abort` or `git merge --abort`, whichever `repoState` calls for. */
+  /** Aborts the paused rebase / merge / revert / cherry-pick, whichever `repoState` calls for. */
   abortConflict: () => Promise<RepoStateOutcome>;
   entries: SelectableEntry[];
   /** Visible rows of the folder tree (directories + files), in display order. */
@@ -143,6 +145,10 @@ export interface RepoModel {
   generateCommitMessage: () => Promise<{ title: string; description: string } | null>;
   /** Combine every commit from HEAD back through `baseSha` (inclusive) into one. */
   squash: (baseSha: string, message: string) => Promise<SquashOutcome>;
+  /** Adds a commit undoing `sha`; a conflict leaves the repo "reverting". */
+  revert: (sha: string) => Promise<RevertOutcome>;
+  /** Applies `shas` (oldest-first) onto HEAD; a conflict leaves the repo "cherry-picking". */
+  cherryPick: (shas: string[]) => Promise<CherryPickOutcome>;
   push: (opts?: PushOptions) => Promise<PushOutcome>;
   pull: () => Promise<PullOutcome>;
   fetch: () => Promise<FetchOutcome>;
@@ -664,6 +670,44 @@ export function useRepoModel(): RepoModel {
     [refresh],
   );
 
+  // Both add commits (history-changing, like squash), so app.tsx refreshes the
+  // history hook after; a conflict surfaces through repoState on refresh().
+  const revert = useCallback(
+    async (sha: string): Promise<RevertOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Reverting";
+      setBusy("Reverting");
+      try {
+        const outcome = await gitRevert(sha);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
+  const cherryPick = useCallback(
+    async (shas: string[]): Promise<CherryPickOutcome> => {
+      if (busyRef.current) return { ok: false, message: "busy" };
+      busyRef.current = "Cherry-picking";
+      setBusy("Cherry-picking");
+      try {
+        const outcome = await gitCherryPick(shas);
+        setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
+        await refresh();
+        return outcome;
+      } finally {
+        busyRef.current = null;
+        setBusy(null);
+      }
+    },
+    [refresh],
+  );
+
   const push = useCallback(
     async (opts: PushOptions = {}): Promise<PushOutcome> => {
       if (busyRef.current) return { ok: false, message: "busy" };
@@ -936,8 +980,8 @@ export function useRepoModel(): RepoModel {
     busyRef.current = "Continuing";
     setBusy("Continuing");
     try {
-      const outcome =
-        repoState === "rebasing" ? await gitContinueRebase() : await gitContinueMerge();
+      if (repoState === "clean") return { ok: false, message: "Nothing to continue" };
+      const outcome = await gitContinueOperation(repoState);
       setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
       await refresh();
       return outcome;
@@ -952,7 +996,8 @@ export function useRepoModel(): RepoModel {
     busyRef.current = "Aborting";
     setBusy("Aborting");
     try {
-      const outcome = repoState === "rebasing" ? await gitAbortRebase() : await gitAbortMerge();
+      if (repoState === "clean") return { ok: false, message: "Nothing to abort" };
+      const outcome = await gitAbortOperation(repoState);
       setToast({ kind: outcome.ok ? "ok" : "err", text: outcome.message });
       await refresh();
       return outcome;
@@ -1017,6 +1062,8 @@ export function useRepoModel(): RepoModel {
     generatingCommitMessage,
     generateCommitMessage,
     squash,
+    revert,
+    cherryPick,
     push,
     pull,
     fetch,
