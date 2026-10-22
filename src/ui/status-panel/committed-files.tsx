@@ -6,7 +6,11 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useEffect, useRef } from "react";
 import type { CommitFileEntry } from "../../git/index.js";
+import { ensureRowVisible } from "../scroll.js";
 import { BOLD, kindBadge, kindColor, theme } from "../theme.js";
+
+// Matches RowView's box `height: 1` below.
+const ROW_HEIGHT = 1;
 
 interface Props {
   files: CommitFileEntry[];
@@ -66,8 +70,10 @@ export function CommittedFiles({ files, selectedPath, focused, width, onSelect }
   const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 
   useEffect(() => {
-    if (selectedPath) scrollboxRef.current?.scrollChildIntoView(`file-${selectedPath}`);
-  }, [selectedPath]);
+    if (!selectedPath) return;
+    const idx = files.findIndex((f) => f.path === selectedPath);
+    ensureRowVisible(scrollboxRef.current, idx, ROW_HEIGHT);
+  }, [selectedPath, files]);
 
   if (files.length === 0) {
     // Centered like the diff panel's own "Nothing to show" — a quiet

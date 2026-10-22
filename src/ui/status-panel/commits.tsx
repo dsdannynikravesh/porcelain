@@ -6,7 +6,11 @@
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { useEffect, useRef } from "react";
 import type { CommitEntry } from "../../git/index.js";
+import { ensureRowVisible } from "../scroll.js";
 import { BOLD, theme } from "../theme.js";
+
+// Matches CommitRowView's box `height: 2` below.
+const ROW_HEIGHT = 2;
 
 interface Props {
   commits: CommitEntry[];
@@ -79,8 +83,10 @@ export function StatusPanelCommits({
   const scrollboxRef = useRef<ScrollBoxRenderable>(null);
 
   useEffect(() => {
-    if (selectedSha) scrollboxRef.current?.scrollChildIntoView(`commit-${selectedSha}`);
-  }, [selectedSha]);
+    if (!selectedSha) return;
+    const idx = commits.findIndex((c) => c.sha === selectedSha);
+    ensureRowVisible(scrollboxRef.current, idx, ROW_HEIGHT);
+  }, [selectedSha, commits]);
 
   return (
     <box
