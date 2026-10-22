@@ -24,6 +24,7 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["d / u", "scroll diff"],
   ["[ / ]", "prev / next hunk"],
   ["H", "stage / unstage hunk"],
+  ["V", "pick lines of the hunk to stage / unstage"],
   ["v", "split ⇄ unified"],
   ["w", "wrap lines"],
   ["r", "refresh"],

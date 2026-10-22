@@ -7,6 +7,7 @@ import {
   checkoutName,
   defaultPushRemote,
   getGitCwd,
+  isChangeLine,
   lastCommitMessage,
   listCommits,
   operationName,
@@ -24,6 +25,7 @@ import { ConflictResolution } from "./conflict-resolution.js";
 import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
 import { FolderDiffPanel } from "./folder-diff-panel.js";
 import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
+import { LineSelectPanel } from "./line-select-panel.js";
 import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
 import { firstHunkLine, openInEditor } from "./open-editor.js";
 import { ReferencePicker } from "./reference-picker.js";
@@ -93,6 +95,26 @@ export function App() {
   } | null>(null);
   const [cherryIndex, setCherryIndex] = useState(0);
   const [cherryChecked, setCherryChecked] = useState<ReadonlySet<string>>(new Set());
+  /** Line mode (`V`): pick individual +/- lines of the selected hunk to stage.
+   *  Holds the file key it was opened on, so selecting anything else (or
+   *  leaving the changes tab) ends it without a separate reset effect. */
+  const [lineModeKey, setLineModeKey] = useState<string | null>(null);
+  /** Index into the selected hunk's `lines` — always a change line. */
+  const [lineCursor, setLineCursorState] = useState(0);
+  const [lineSelected, setLineSelectedState] = useState<ReadonlySet<number>>(new Set());
+  // Mirrored in refs, updated synchronously, so a burst of keypresses that
+  // lands before the next render ("space j space") each sees the last one's
+  // result instead of a stale closure — same idea as model.ts's selection.
+  const lineCursorRef = useRef(0);
+  const lineSelectedRef = useRef<ReadonlySet<number>>(new Set());
+  const setLineCursor = useCallback((i: number) => {
+    lineCursorRef.current = i;
+    setLineCursorState(i);
+  }, []);
+  const setLineSelected = useCallback((next: ReadonlySet<number>) => {
+    lineSelectedRef.current = next;
+    setLineSelectedState(next);
+  }, []);
   const [conflictIndex, setConflictIndex] = useState(0);
   /** Emails checked for the commit currently being composed. */
   const [coAuthors, setCoAuthors] = useState<ReadonlySet<string>>(new Set());
@@ -171,6 +193,33 @@ export function App() {
       current = false;
     };
   }, [referenceQuery, references]);
+
+  const currentHunk = model.hunks[model.selectedHunkIndex] ?? null;
+  const changeLines = useMemo(
+    () => currentHunk?.lines.flatMap((l, i) => (isChangeLine(l) ? [i] : [])) ?? [],
+    [currentHunk],
+  );
+
+  // A different hunk (or the same file re-diffed after staging some of it)
+  // starts over on its first change line with nothing picked — and once
+  // there's nothing left to pick on this side, line mode is done.
+  useEffect(() => {
+    setLineCursor(changeLines[0] ?? 0);
+    setLineSelected(new Set());
+    if (changeLines.length === 0) setLineModeKey(null);
+  }, [changeLines, setLineCursor, setLineSelected]);
+
+  const lineMode =
+    lineModeKey !== null && lineModeKey === model.selectedKey && statusTab === "changes";
+
+  const moveLineCursor = useCallback(
+    (delta: number) => {
+      const at = changeLines.indexOf(lineCursorRef.current);
+      const next = changeLines[Math.max(0, Math.min(at + delta, changeLines.length - 1))];
+      if (next !== undefined) setLineCursor(next);
+    },
+    [changeLines, setLineCursor],
+  );
 
   const enterCommit = useCallback(() => {
     setCommitField("summary");
@@ -825,6 +874,37 @@ export function App() {
       return;
     }
 
+    // 9b. Line mode owns list-mode keys while active.
+    if (lineMode) {
+      if (isKey(key, "escape") || isKey(key, "V")) {
+        setLineModeKey(null);
+      } else if (isKey(key, "j") || isKey(key, "down")) {
+        moveLineCursor(1);
+      } else if (isKey(key, "k") || isKey(key, "up")) {
+        moveLineCursor(-1);
+      } else if (isKey(key, "space")) {
+        const next = new Set(lineSelectedRef.current);
+        const at = lineCursorRef.current;
+        if (next.has(at)) next.delete(at);
+        else next.add(at);
+        setLineSelected(next);
+        moveLineCursor(1);
+      } else if (isKey(key, "a")) {
+        setLineSelected(
+          lineSelectedRef.current.size === changeLines.length ? new Set() : new Set(changeLines),
+        );
+      } else if (isKey(key, "[")) {
+        model.moveHunk(-1);
+      } else if (isKey(key, "]")) {
+        model.moveHunk(1);
+      } else if (isKey(key, "return")) {
+        // Nothing picked means "the line under the cursor", like the pickers.
+        const picked = lineSelectedRef.current;
+        void model.toggleLinesStage(picked.size > 0 ? picked : new Set([lineCursorRef.current]));
+      }
+      return;
+    }
+
     const inHistory = statusTab === "history";
 
     // 10. List mode.
@@ -891,6 +971,8 @@ export function App() {
       if (!inHistory) model.moveHunk(1);
     } else if (isKey(key, "H")) {
       if (!inHistory) void model.toggleHunkStage();
+    } else if (isKey(key, "V")) {
+      if (!inHistory && changeLines.length > 0) setLineModeKey(model.selectedKey);
     } else if (isKey(key, "v")) {
       setDiffView((v) => (v === "split" ? "unified" : "split"));
     } else if (isKey(key, "n")) {
@@ -1023,6 +1105,17 @@ export function App() {
             view={diffView}
             showLineNumbers={showLineNumbers}
             wrap={wrapDiff}
+            width={diffWidth}
+          />
+        ) : lineMode && currentHunk && model.selected ? (
+          <LineSelectPanel
+            path={model.selected.entry.path}
+            hunk={currentHunk}
+            hunkIndex={model.selectedHunkIndex}
+            hunkCount={model.hunks.length}
+            cursor={lineCursor}
+            selected={lineSelected}
+            staged={model.selected.section === "staged"}
             width={diffWidth}
           />
         ) : (

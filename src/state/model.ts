@@ -31,6 +31,7 @@ import {
   squashToHead as gitSquash,
   stageAll as gitStageAll,
   stageHunk as gitStageHunk,
+  stageLines as gitStageLines,
   stashApply as gitStashApply,
   stashDrop as gitStashDrop,
   stashPop as gitStashPop,
@@ -38,6 +39,7 @@ import {
   switchBranch as gitSwitchBranch,
   unstageAll as gitUnstageAll,
   unstageHunk as gitUnstageHunk,
+  unstageLines as gitUnstageLines,
   type Hunk,
   listBranches,
   listContributors,
@@ -119,6 +121,9 @@ export interface RepoModel {
   /** Stages (if viewing the unstaged diff) or unstages (if viewing the staged
    *  diff) just the selected hunk, leaving the file's other hunks alone. */
   toggleHunkStage: () => Promise<void>;
+  /** Same as toggleHunkStage, but for just the `lines` (indices into the
+   *  selected hunk's `lines`) — resolves true when they were applied. */
+  toggleLinesStage: (lines: ReadonlySet<number>) => Promise<boolean>;
   loading: boolean;
   error: string | null;
   toast: Toast | null;
@@ -565,6 +570,31 @@ export function useRepoModel(): RepoModel {
       stagingIn ? "Staging hunk" : "Unstaging hunk",
     );
   }, [runMutation]);
+
+  const toggleLinesStage = useCallback(
+    async (lines: ReadonlySet<number>): Promise<boolean> => {
+      if (busyRef.current) return false;
+      const current = entriesRef.current.find((e) => e.key === selectedKeyRef.current);
+      const hunk = hunksRef.current[selectedHunkIndexRef.current];
+      const patch = diffRef.current?.patch;
+      if (!current || current.entry.unmerged || !hunk || !patch) return false;
+      const stagingIn = current.section === "unstaged";
+      pendingSelectRef.current = selectedKeyRef.current;
+      let applied = false;
+      await runMutation(
+        async () => {
+          const outcome = stagingIn
+            ? await gitStageLines(patch, hunk, lines)
+            : await gitUnstageLines(patch, hunk, lines);
+          if (!outcome.ok) throw new Error(outcome.message);
+          applied = true;
+        },
+        stagingIn ? "Staging lines" : "Unstaging lines",
+      );
+      return applied;
+    },
+    [runMutation],
+  );
 
   const stageAll = useCallback(
     () => runMutation(() => gitStageAll(), "Staging all changes", "Staged all changes"),
@@ -1044,6 +1074,7 @@ export function useRepoModel(): RepoModel {
     selectedHunkIndex: clampedHunkIndex,
     moveHunk,
     toggleHunkStage,
+    toggleLinesStage,
     loading,
     error,
     toast,

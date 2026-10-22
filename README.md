@@ -29,8 +29,8 @@ inspiration.
   sections, live-updated as files change on disk
 - **Side-by-side diffs** (old left / new right, or unified) with syntax
   highlighting, line numbers, and word wrap toggles
-- **Hunk-level staging** — stage or unstage a single hunk out of a file, not
-  just the whole thing
+- **Hunk- and line-level staging** — stage or unstage a single hunk out of a
+  file, or press `V` to pick individual lines of it
 - **Commit** (summary + description, co-authors, amend, and squash),
   **push / pull / fetch** (including `--force-with-lease`)
 - **AI-generated commit messages** — `Ctrl+G` in the commit box asks GitHub
@@ -134,6 +134,7 @@ publish them as GitHub Release assets.
 | `d` / `u` | scroll the diff                                      |
 | `[` / `]` | previous / next hunk                                 |
 | `H`       | stage / unstage just the selected hunk               |
+| `V`       | line mode — pick individual lines of the hunk to stage |
 | `v`       | toggle split / unified diff                          |
 | `w`       | toggle line wrapping in the diff                     |
 | `n`       | toggle diff line numbers                             |
