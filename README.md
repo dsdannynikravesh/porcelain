@@ -126,7 +126,7 @@ publish them as GitHub Release assets.
 | `Ctrl+Enter` | commit from either field                          |
 | `Ctrl+G`  | generate a commit message with Copilot               |
 | `M`       | amend the last commit                                |
-| `p` / `P` | pull / push                                          |
+| `p` / `P` | pull / push (a new branch is published with `-u`)    |
 | `F`       | force push (`--force-with-lease`)                    |
 | `e`       | open the selected file in `$VISUAL`/`$EDITOR`        |
 | `X`       | discard the file's changes                           |

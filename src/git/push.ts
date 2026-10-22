@@ -26,10 +26,18 @@ export interface PushOptions {
    * else pushed), so it can't silently clobber work you haven't seen.
    */
   forceWithLease?: boolean;
+  /**
+   * `-u <remote> <branch>` — publishes a branch that has no upstream yet
+   * (a bare `git push` refuses with "has no upstream branch") and records
+   * the tracking relationship so later pushes/pulls just work.
+   */
+  setUpstream?: { remote: string; branch: string };
 }
 
 export async function push(opts: PushOptions = {}): Promise<PushOutcome> {
-  const args = opts.forceWithLease ? ["push", "--force-with-lease"] : ["push"];
+  const args = ["push"];
+  if (opts.forceWithLease) args.push("--force-with-lease");
+  if (opts.setUpstream) args.push("-u", opts.setUpstream.remote, opts.setUpstream.branch);
   const res = await runGit(args);
   // git puts all of its human-facing output on stderr, win or lose — stdout
   // is reserved for machine-parseable data push doesn't produce.

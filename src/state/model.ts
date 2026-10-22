@@ -667,7 +667,11 @@ export function useRepoModel(): RepoModel {
   const push = useCallback(
     async (opts: PushOptions = {}): Promise<PushOutcome> => {
       if (busyRef.current) return { ok: false, message: "busy" };
-      const label = opts.forceWithLease ? "Force pushing" : "Pushing";
+      const label = opts.forceWithLease
+        ? "Force pushing"
+        : opts.setUpstream
+          ? "Publishing branch"
+          : "Pushing";
       busyRef.current = label;
       setBusy(label);
       try {

@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { commit } from "./commit.js";
 import { diffFile } from "./diff.js";
 import { findRepoRoot, runGit, runGitOrThrow, setGitCwd } from "./exec.js";
+import { push } from "./push.js";
+import { defaultPushRemote } from "./remotes.js";
 import { stageFile, unstageFile } from "./stage.js";
 import { status } from "./status.js";
 
@@ -117,4 +119,24 @@ test("ahead count reflects local commits without an upstream push", async () => 
   await git("branch", "--set-upstream-to=refs/heads/main", "main").catch(() => {});
   const s = await status();
   expect(typeof s.ahead).toBe("number");
+});
+
+test("push with setUpstream publishes a new branch and tracks it", async () => {
+  const remote = realpathSync(mkdtempSync(join(tmpdir(), "porcelain-remote-")));
+  try {
+    await runGitOrThrow(["init", "-q", "--bare"], { cwd: remote });
+    expect(await defaultPushRemote()).toBeNull();
+    await git("remote", "add", "origin", remote);
+    expect(await defaultPushRemote()).toBe("origin");
+
+    await git("switch", "-q", "-c", "feature/publish");
+    expect((await status()).upstream).toBeNull();
+
+    const outcome = await push({ setUpstream: { remote: "origin", branch: "feature/publish" } });
+    expect(outcome.ok).toBe(true);
+    expect((await status()).upstream).toBe("origin/feature/publish");
+  } finally {
+    await git("remote", "remove", "origin").catch(() => {});
+    rmSync(remote, { recursive: true, force: true });
+  }
 });

@@ -118,6 +118,8 @@ export function StatusBar({ status, repoPath, changeCount, busy, toast }: Props)
           ) : (
             <text style={{ fg: theme.faint }}>{" Up to date"}</text>
           )
+        ) : status?.branch && !status.detached ? (
+          <Chip label="Publish P" color={theme.accent} />
         ) : (
           <text style={{ fg: theme.faint }}>{" no upstream"}</text>
         )}

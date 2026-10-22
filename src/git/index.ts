@@ -10,6 +10,7 @@ export * from "./log.js";
 export * from "./pull.js";
 export * from "./push.js";
 export * from "./reflog.js";
+export * from "./remotes.js";
 export * from "./repostate.js";
 export * from "./squash.js";
 export * from "./stage.js";

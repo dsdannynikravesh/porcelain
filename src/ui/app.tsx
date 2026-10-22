@@ -2,7 +2,13 @@ import type { KeyEvent } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type GitHubReference, listOpenReferences } from "../gh/index.js";
-import { checkoutName, getGitCwd, lastCommitMessage, withCoAuthors } from "../git/index.js";
+import {
+  checkoutName,
+  defaultPushRemote,
+  getGitCwd,
+  lastCommitMessage,
+  withCoAuthors,
+} from "../git/index.js";
 import { useCommitHistory } from "../state/history.js";
 import { useRepoModel } from "../state/model.js";
 import { useRepoWatch } from "../state/watch.js";
@@ -425,6 +431,34 @@ export function App() {
     });
   }, [model]);
 
+  // A plain `git push` refuses outright on a branch with no upstream, so the
+  // first push of a new branch publishes it instead (-u), with a confirm
+  // since it's creating something on the remote, not just updating it.
+  const requestPush = useCallback(async () => {
+    const s = model.status;
+    if (!s || s.upstream || s.detached || !s.branch) {
+      void model.push();
+      return;
+    }
+    const branch = s.branch;
+    const remote = await defaultPushRemote().catch(() => null);
+    if (!remote) {
+      model.setToast({
+        kind: "err",
+        text: "No remote to publish to — add one with git remote add",
+      });
+      return;
+    }
+    setConfirm({
+      title: "Publish branch",
+      body: `"${branch}" doesn't exist on ${remote} yet. Push it and set it as this branch's upstream?`,
+      command: `git push -u ${remote} ${branch}`,
+      run: async () => {
+        await model.push({ setUpstream: { remote, branch } });
+      },
+    });
+  }, [model]);
+
   const requestDiscard = useCallback(() => {
     const sel = model.selected;
     if (!sel) return;
@@ -718,7 +752,7 @@ export function App() {
     } else if (isKey(key, "M")) {
       if (!inHistory) void startAmend();
     } else if (isKey(key, "P")) {
-      if (!inHistory) void model.push();
+      if (!inHistory) void requestPush();
     } else if (isKey(key, "F")) {
       if (!inHistory) requestForcePush();
     } else if (isKey(key, "p")) {
@@ -938,7 +972,11 @@ export function App() {
 
       {confirm ? <Confirm request={confirm} /> : null}
       {showBranches ? (
-        <BranchPicker branches={model.branches} selectedIndex={branchIndex} terminalHeight={height} />
+        <BranchPicker
+          branches={model.branches}
+          selectedIndex={branchIndex}
+          terminalHeight={height}
+        />
       ) : null}
       {showNewBranch ? <NewBranchPrompt ref={newBranchRef} /> : null}
       {showStash ? (

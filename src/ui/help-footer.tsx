@@ -17,7 +17,7 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["^G", "generate commit message with Copilot"],
   ["M", "amend"],
   ["p", "pull"],
-  ["P", "push"],
+  ["P", "push (publishes a new branch)"],
   ["F", "force push (--force-with-lease)"],
   ["e", "open in $EDITOR"],
   ["X", "discard"],
