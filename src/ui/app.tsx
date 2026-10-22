@@ -459,6 +459,21 @@ export function App() {
     });
   }, [model]);
 
+  // OSC 52 goes through the terminal itself, so this works over SSH and
+  // inside tmux (with set-clipboard on) — but some terminals ignore it.
+  const copy = useCallback(
+    (text: string | null | undefined, what: string) => {
+      if (!text) return;
+      const ok = renderer.copyToClipboardOSC52(text);
+      model.setToast(
+        ok
+          ? { kind: "ok", text: `Copied ${what}` }
+          : { kind: "err", text: "This terminal doesn't support clipboard copy (OSC 52)" },
+      );
+    },
+    [renderer, model],
+  );
+
   const requestDiscard = useCallback(() => {
     const sel = model.selected;
     if (!sel) return;
@@ -793,6 +808,18 @@ export function App() {
       if (inHistory && historyFocus === "commits") startSquash();
     } else if (isKey(key, "o")) {
       void model.browse();
+    } else if (isKey(key, "y")) {
+      if (!inHistory) {
+        copy(model.selected?.entry.path ?? model.selectedKey?.replace(/^dir:/, ""), "path");
+      } else if (historyFocus === "files") {
+        copy(history.selectedPath, "path");
+      } else {
+        copy(history.selectedSha, "commit sha");
+      }
+    } else if (isKey(key, "Y")) {
+      if (inHistory) {
+        copy(history.commits.find((c) => c.sha === history.selectedSha)?.subject, "commit subject");
+      }
     } else if (isKey(key, "z")) {
       openReflogPicker();
     } else if (isKey(key, "g")) {

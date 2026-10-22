@@ -32,6 +32,8 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["s", "stash"],
   ["S", "squash to here (history tab)"],
   ["o", "open on GitHub"],
+  ["y", "copy path / commit sha"],
+  ["Y", "copy commit subject (history tab)"],
   ["z", "undo (reflog)"],
   ["g", "continue rebase/merge (after resolving conflicts)"],
   ["G", "abort rebase/merge"],

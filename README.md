@@ -142,6 +142,7 @@ publish them as GitHub Release assets.
 | `s`       | stash (push / pop / apply / drop)                    |
 | `S`       | squash commits (history view)                        |
 | `o`       | open this repo on GitHub                             |
+| `y` / `Y` | copy path or commit sha / commit subject (OSC 52)    |
 | `z`       | undo — browse the reflog and reset back to any point |
 | `g` / `G` | continue / abort a paused merge or rebase            |
 | `?`       | help                                                 |
