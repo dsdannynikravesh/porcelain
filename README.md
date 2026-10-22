@@ -43,6 +43,7 @@ inspiration.
   branches shown alongside locals (checking one out creates its local branch
   automatically, same as `git switch <name>`'s own DWIM behavior)
 - **Revert** any commit from the history view, history-safe
+- **Filter** the changed files by path, or search history by message or sha, with `/`
 - **Stash** — push, pop, apply, drop
 - **Conflict handling** — a blocking resolution dialog lists every conflicted
   file during a merge or rebase; open one in `$EDITOR` with `e`, stage it, then
@@ -148,6 +149,7 @@ publish them as GitHub Release assets.
 | `y` / `Y` | copy path or commit sha / commit subject (OSC 52)    |
 | `z`       | undo — browse the reflog and reset back to any point |
 | `g` / `G` | continue / abort a paused merge, rebase, revert, or cherry-pick |
+| `/`       | filter files by path, or search commits (Esc clears) |
 | `?`       | help                                                 |
 | `q`       | quit                                                 |
 

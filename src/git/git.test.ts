@@ -6,7 +6,7 @@ import { cherryPick } from "./cherrypick.js";
 import { commit } from "./commit.js";
 import { diffFile } from "./diff.js";
 import { findRepoRoot, runGit, runGitOrThrow, setGitCwd } from "./exec.js";
-import { listCommits } from "./log.js";
+import { listCommits, resolveCommit } from "./log.js";
 import { push } from "./push.js";
 import { defaultPushRemote } from "./remotes.js";
 import { abortOperation, continueOperation, getRepoState } from "./repostate.js";
@@ -212,4 +212,21 @@ test("a conflicting cherry-pick pauses as 'cherry-picking' and continues once re
   expect(await getRepoState()).toBe("clean");
   const [head] = await listCommits(1);
   expect(head!.subject).toBe("cp theirs");
+});
+
+test("listCommits grep matches message text case-insensitively and literally", async () => {
+  await commitFile("g1.txt", "1\n", "feat: Alpha (v1.2+)");
+  await commitFile("g2.txt", "2\n", "fix: beta");
+  expect((await listCommits(10, 0, { grep: "ALPHA" })).map((c) => c.subject)).toEqual([
+    "feat: Alpha (v1.2+)",
+  ]);
+  // Regex metacharacters are taken literally.
+  expect(await listCommits(10, 0, { grep: "(v1.2+)" })).toHaveLength(1);
+  expect(await listCommits(10, 0, { grep: "nothing-like-this" })).toHaveLength(0);
+});
+
+test("resolveCommit finds a commit by sha prefix and rejects junk", async () => {
+  const [head] = await listCommits(1);
+  expect((await resolveCommit(head!.sha.slice(0, 7)))?.sha).toBe(head!.sha);
+  expect(await resolveCommit("zzzzzzz")).toBeNull();
 });

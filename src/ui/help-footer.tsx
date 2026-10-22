@@ -39,6 +39,7 @@ const KEYS: Array<[string, string, boolean?]> = [
   ["z", "undo (reflog)"],
   ["g", "continue merge/rebase/revert/pick (after resolving)"],
   ["G", "abort merge/rebase/revert/pick"],
+  ["/", "filter files / search commits (Esc clears)"],
   ["?", "help", true],
   ["q", "quit", true],
 ];

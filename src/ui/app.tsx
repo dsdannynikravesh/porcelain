@@ -26,7 +26,6 @@ import { DiffPanel, type DiffScrollHandle } from "./diff-panel.js";
 import { FolderDiffPanel } from "./folder-diff-panel.js";
 import { HELP_MODAL_WIDTH, HelpFooter } from "./help-footer.js";
 import { LineSelectPanel } from "./line-select-panel.js";
-import { NewBranchPrompt, type NewBranchPromptHandle } from "./new-branch-prompt.js";
 import { firstHunkLine, openInEditor } from "./open-editor.js";
 import { ReferencePicker } from "./reference-picker.js";
 import { ReflogPicker } from "./reflog-picker.js";
@@ -34,6 +33,7 @@ import { StashPicker } from "./stash-picker.js";
 import { StatusBar } from "./status-bar.js";
 import { StatusPanelCommits } from "./status-panel/commits.js";
 import { StatusPanel, type StatusTab } from "./status-panel/index.js";
+import { TextPrompt, type TextPromptHandle } from "./text-prompt.js";
 import { theme } from "./theme.js";
 
 export type Focus = "list" | "commit";
@@ -77,6 +77,8 @@ export function App() {
   const [showBranches, setShowBranches] = useState(false);
   const [branchIndex, setBranchIndex] = useState(0);
   const [showNewBranch, setShowNewBranch] = useState(false);
+  /** The `/` filter prompt — files in the changes tab, commits in history. */
+  const [showFilter, setShowFilter] = useState(false);
   const [showStash, setShowStash] = useState(false);
   const [stashIndex, setStashIndex] = useState(0);
   const [showCoAuthors, setShowCoAuthors] = useState(false);
@@ -124,7 +126,8 @@ export function App() {
   );
 
   const commitRef = useRef<CommitBoxHandle>(null);
-  const newBranchRef = useRef<NewBranchPromptHandle>(null);
+  const newBranchRef = useRef<TextPromptHandle>(null);
+  const filterRef = useRef<TextPromptHandle>(null);
   const diffScrollRef = useRef<DiffScrollHandle>(null);
 
   const refresh = model.refresh;
@@ -691,6 +694,19 @@ export function App() {
       return;
     }
 
+    // 3b. Filter prompt — same deal as the branch-name prompt.
+    if (showFilter) {
+      if (isKey(key, "escape")) {
+        setShowFilter(false);
+      } else if (isKey(key, "return")) {
+        const value = filterRef.current?.getValue().trim() ?? "";
+        setShowFilter(false);
+        if (statusTab === "history") history.setQuery(value);
+        else model.setFilter(value);
+      }
+      return;
+    }
+
     // 4. Branch picker owns all input while open.
     if (showBranches) {
       if (isKey(key, "escape")) {
@@ -910,6 +926,12 @@ export function App() {
     // 10. List mode.
     if (key.name === "?" || (key.name === "/" && key.shift)) {
       setShowHelp(true);
+    } else if (isKey(key, "/")) {
+      setShowFilter(true);
+    } else if (isKey(key, "escape")) {
+      // Esc in list mode clears whichever filter this tab has.
+      if (inHistory) history.setQuery("");
+      else model.setFilter("");
     } else if (isKey(key, "q")) {
       renderer.destroy();
       process.exit(0);
@@ -1077,6 +1099,7 @@ export function App() {
             selectedSha={history.selectedSha}
             focused={focus === "list" && historyFocus === "commits"}
             width={commitsWidth}
+            query={history.query}
             onSelect={history.selectCommit}
           />
         ) : null}
@@ -1089,6 +1112,7 @@ export function App() {
           focused={focus === "list" && (statusTab === "changes" || historyFocus === "files")}
           width={commitsWidth}
           onSelect={model.select}
+          filter={model.filter}
           onSelectFile={history.selectFile}
           onActivate={(key) => {
             if (key.startsWith("dir:")) model.toggleCollapsed(key);
@@ -1205,7 +1229,23 @@ export function App() {
           terminalHeight={height}
         />
       ) : null}
-      {showNewBranch ? <NewBranchPrompt ref={newBranchRef} /> : null}
+      {showNewBranch ? (
+        <TextPrompt
+          ref={newBranchRef}
+          title="New branch"
+          placeholder="branch name"
+          hint="Enter create · Esc cancel"
+        />
+      ) : null}
+      {showFilter ? (
+        <TextPrompt
+          ref={filterRef}
+          title={statusTab === "history" ? "Search commits" : "Filter files"}
+          placeholder={statusTab === "history" ? "message text or sha" : "path contains…"}
+          hint="Enter apply (empty clears) · Esc cancel"
+          initialValue={statusTab === "history" ? history.query : model.filter}
+        />
+      ) : null}
       {cherryPick ? (
         <CherryPickPicker
           branch={cherryPick.branch}

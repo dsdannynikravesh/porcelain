@@ -18,6 +18,8 @@ interface Props {
   selectedSha: string | null;
   focused: boolean;
   width: number;
+  /** Search in effect, shown in the header ("" for none). */
+  query?: string;
   onSelect?: (sha: string) => void;
 }
 
@@ -78,6 +80,7 @@ export function StatusPanelCommits({
   selectedSha,
   focused,
   width,
+  query,
   onSelect,
 }: Props) {
   const scrollboxRef = useRef<ScrollBoxRenderable>(null);
@@ -105,6 +108,11 @@ export function StatusPanelCommits({
         <text style={{ fg: theme.faint }}>
           {loadingMore ? `  ${commits.length}…` : `  ${commits.length}`}
         </text>
+        {query ? (
+          <text style={{ fg: theme.accent }}>
+            {truncate(`  /${query}`, Math.max(4, width - 16))}
+          </text>
+        ) : null}
       </box>
       <scrollbox
         ref={scrollboxRef}

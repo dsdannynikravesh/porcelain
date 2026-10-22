@@ -19,7 +19,11 @@ export interface ListCommitsOptions {
   /** Only commits on `branch` that HEAD doesn't have yet — ignoring any whose
    *  patch HEAD already contains (already cherry-picked), via --cherry-pick. */
   notInHead?: string;
+  /** Only commits whose message contains this text (case-insensitive, literal). */
+  grep?: string;
 }
+
+const PRETTY = `--pretty=format:%H${FIELD_SEP}%h${FIELD_SEP}%an${FIELD_SEP}%ad${FIELD_SEP}%s${RECORD_SEP}`;
 
 /** Read one page of commits. `skip` is the history cursor for the next page. */
 export async function listCommits(
@@ -27,16 +31,25 @@ export async function listCommits(
   skip = 0,
   opts: ListCommitsOptions = {},
 ): Promise<CommitEntry[]> {
-  const args = [
-    "log",
-    `--skip=${skip}`,
-    `--max-count=${limit}`,
-    "--date=short",
-    `--pretty=format:%H${FIELD_SEP}%h${FIELD_SEP}%an${FIELD_SEP}%ad${FIELD_SEP}%s${RECORD_SEP}`,
-  ];
+  const args = ["log", `--skip=${skip}`, `--max-count=${limit}`, "--date=short", PRETTY];
+  if (opts.grep) args.push("--regexp-ignore-case", "--fixed-strings", `--grep=${opts.grep}`);
   if (opts.notInHead) args.push("--cherry-pick", "--right-only", `HEAD...${opts.notInHead}`, "--");
-  const raw = await runGitOrThrow(args);
+  return parseCommits(await runGitOrThrow(args));
+}
 
+/**
+ * The commit `ref` names (a sha prefix, branch, tag, …), or null if it
+ * doesn't resolve to one — lets a history search for "a1b2c3" find that
+ * commit even though its message doesn't contain the text.
+ */
+export async function resolveCommit(ref: string): Promise<CommitEntry | null> {
+  const verify = await runGit(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  if (verify.code !== 0) return null;
+  const raw = await runGitOrThrow(["log", "-1", "--date=short", PRETTY, verify.stdout.trim()]);
+  return parseCommits(raw)[0] ?? null;
+}
+
+function parseCommits(raw: string): CommitEntry[] {
   const commits: CommitEntry[] = [];
   for (const record of raw.split(RECORD_SEP)) {
     // git joins entries with "\n", so every record but the first arrives with

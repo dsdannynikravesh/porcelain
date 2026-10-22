@@ -20,6 +20,8 @@ interface Props {
   selectedKey: string | null;
   onSelect?: (key: string) => void;
   onActivate?: (key: string) => void;
+  /** Path filter in effect, shown in the header ("" for none). */
+  filter?: string;
   // history mode
   files: CommitFileEntry[];
   selectedPath: string | null;
@@ -34,6 +36,7 @@ export function StatusPanel({
   selectedKey,
   onSelect,
   onActivate,
+  filter,
   files,
   selectedPath,
   onSelectFile,
@@ -61,6 +64,11 @@ export function StatusPanel({
       <box style={{ flexDirection: "row", height: 1, paddingLeft: 1 }}>
         <text style={{ fg: theme.dim, attributes: BOLD }}>{isHistory ? "FILES" : "CHANGES"}</text>
         <text style={{ fg: theme.faint }}>{`  ${count}`}</text>
+        {!isHistory && filter ? (
+          <text style={{ fg: theme.accent }}>
+            {`  /${filter.length > width - 18 ? `${filter.slice(0, Math.max(1, width - 19))}…` : filter}`}
+          </text>
+        ) : null}
       </box>
 
       {isHistory ? (

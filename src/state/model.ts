@@ -99,6 +99,10 @@ export interface RepoModel {
   entries: SelectableEntry[];
   /** Visible rows of the folder tree (directories + files), in display order. */
   rows: TreeRow[];
+  /** Path filter in effect for `rows` ("" for none). `entries` is never
+   *  filtered — conflicts and counts always see every changed file. */
+  filter: string;
+  setFilter: (filter: string) => void;
   selectedKey: string | null;
   /** The selected file, or null when a directory row (or nothing) is selected. */
   selected: SelectableEntry | null;
@@ -199,6 +203,23 @@ function buildEntries(s: RepoStatus): SelectableEntry[] {
 
 const dirPathOf = (key: string) => (key.startsWith("dir:") ? key.slice(4) : null);
 
+const NO_COLLAPSED: ReadonlySet<string> = new Set();
+
+/** The tree rows for `entries` under a path filter. While filtering, every
+ *  directory shows expanded, so a match is never hidden in a collapsed one. */
+function filteredRows(
+  entries: SelectableEntry[],
+  filter: string,
+  collapsed: ReadonlySet<string>,
+): TreeRow[] {
+  if (!filter) return buildTreeRows(entries, collapsed);
+  const needle = filter.toLowerCase();
+  return buildTreeRows(
+    entries.filter((e) => e.entry.path.toLowerCase().includes(needle)),
+    NO_COLLAPSED,
+  );
+}
+
 /** A cheap stand-in for "has anything about this entry that a diff/size
  *  fetch would care about actually changed" — status() rebuilds `entries`
  *  from scratch on every refresh (new object references throughout, even
@@ -214,6 +235,7 @@ export function useRepoModel(): RepoModel {
   const [repoState, setRepoState] = useState<RepoState>("clean");
   const [entries, setEntries] = useState<SelectableEntry[]>([]);
   const [collapsedDirs, setCollapsedDirs] = useState<ReadonlySet<string>>(new Set());
+  const [filter, setFilterState] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
@@ -232,7 +254,10 @@ export function useRepoModel(): RepoModel {
   const [contributors, setContributors] = useState<Contributor[]>([]);
   const [reflog, setReflog] = useState<ReflogEntry[]>([]);
 
-  const rows = useMemo(() => buildTreeRows(entries, collapsedDirs), [entries, collapsedDirs]);
+  const rows = useMemo(
+    () => filteredRows(entries, filter, collapsedDirs),
+    [entries, filter, collapsedDirs],
+  );
   const selectedSignature = useMemo(() => {
     const e = entries.find((e) => e.key === selectedKey);
     return e ? entrySignature(e) : null;
@@ -244,6 +269,7 @@ export function useRepoModel(): RepoModel {
   rowsRef.current = rows;
   const collapsedRef = useRef<ReadonlySet<string>>(collapsedDirs);
   collapsedRef.current = collapsedDirs;
+  const filterRef = useRef("");
   const entriesRef = useRef<SelectableEntry[]>([]);
   entriesRef.current = entries;
   const diffRef = useRef<FileDiff | null>(null);
@@ -269,7 +295,7 @@ export function useRepoModel(): RepoModel {
       entriesRef.current = nextEntries;
       setEntries(nextEntries);
 
-      const nextRows = buildTreeRows(nextEntries, collapsedRef.current);
+      const nextRows = filteredRows(nextEntries, filterRef.current, collapsedRef.current);
 
       // An explicit post-mutation target (e.g. "follow the file I just staged").
       const pending = pendingSelectRef.current;
@@ -466,6 +492,20 @@ export function useRepoModel(): RepoModel {
   }, []);
 
   const select = useCallback((key: string) => setSelected(key), [setSelected]);
+
+  const setFilter = useCallback(
+    (next: string) => {
+      filterRef.current = next;
+      setFilterState(next);
+      // Keep the selection if it still shows; otherwise land on the first match.
+      const nextRows = filteredRows(entriesRef.current, next, collapsedRef.current);
+      prevRowsRef.current = nextRows;
+      if (!nextRows.some((r) => r.key === selectedKeyRef.current)) {
+        setSelected(nextRows[0]?.key ?? null);
+      }
+    },
+    [setSelected],
+  );
 
   const move = useCallback(
     (delta: number) => {
@@ -1062,6 +1102,8 @@ export function useRepoModel(): RepoModel {
     abortConflict,
     entries,
     rows,
+    filter,
+    setFilter,
     selectedKey,
     selected,
     diff,

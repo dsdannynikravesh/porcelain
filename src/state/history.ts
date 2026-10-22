@@ -6,6 +6,7 @@ import {
   type FileDiff,
   filesInCommit,
   listCommits,
+  resolveCommit,
 } from "../git/index.js";
 
 // Independent from state/model.ts (which is entirely working-tree/index
@@ -34,8 +35,17 @@ export interface HistoryModel {
   diff: FileDiff | null;
   diffLoading: boolean;
 
+  /** Commit-message search in effect ("" for none). */
+  query: string;
+  /** Re-lists history filtered to `query` (case-insensitive message match, or
+   *  the commit a sha/ref names), starting again from the first page. */
+  setQuery: (query: string) => void;
+
   refresh: () => Promise<void>;
 }
+
+/** Text worth also trying as a commit ref — a plausible sha prefix. */
+const looksLikeSha = (q: string) => /^[0-9a-f]{4,40}$/i.test(q);
 
 export function useCommitHistory(): HistoryModel {
   const PAGE_SIZE = 100;
@@ -51,6 +61,7 @@ export function useCommitHistory(): HistoryModel {
 
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
+  const [query, setQueryState] = useState("");
 
   const commitsRef = useRef<CommitEntry[]>([]);
   commitsRef.current = commits;
@@ -66,18 +77,28 @@ export function useCommitHistory(): HistoryModel {
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
   const nextSkipRef = useRef(0);
+  const queryRef = useRef("");
 
   const refresh = useCallback(async () => {
     try {
-      const list = await listCommits(PAGE_SIZE, 0);
+      const q = queryRef.current;
+      const [list, shaMatch] = await Promise.all([
+        listCommits(PAGE_SIZE, 0, { grep: q || undefined }),
+        q && looksLikeSha(q) ? resolveCommit(q) : Promise.resolve(null),
+      ]);
+      if (queryRef.current !== q) return; // the search changed while this ran
+      // A sha match goes first unless the message search found it anyway. It
+      // isn't part of the paged `git log` results, so it's left out of the
+      // skip count below.
+      const extra = shaMatch && !list.some((c) => c.sha === shaMatch.sha) ? [shaMatch] : [];
       // A watch refresh happens independently of paging. Keep pages that have
       // already been fetched instead of snapping back to the first 100 commits
       // (and losing the user's selection) whenever the worktree changes.
-      const olderLoaded = commitsRef.current.slice(PAGE_SIZE);
-      const known = new Set(list.map((commit) => commit.sha));
-      const merged = [...list, ...olderLoaded.filter((commit) => !known.has(commit.sha))];
+      const olderLoaded = commitsRef.current.slice(extra.length + PAGE_SIZE);
+      const known = new Set([...extra, ...list].map((commit) => commit.sha));
+      const merged = [...extra, ...list, ...olderLoaded.filter((commit) => !known.has(commit.sha))];
       const hadMore = hasMoreRef.current;
-      nextSkipRef.current = merged.length;
+      nextSkipRef.current = merged.length - extra.length;
       hasMoreRef.current = list.length === PAGE_SIZE && (olderLoaded.length === 0 || hadMore);
       setCommits(merged);
       setError(null);
@@ -166,7 +187,9 @@ export function useCommitHistory(): HistoryModel {
         if (loadingMoreRef.current) return;
         loadingMoreRef.current = true;
         setLoadingMore(true);
-        void listCommits(PAGE_SIZE, nextSkipRef.current)
+        void listCommits(PAGE_SIZE, nextSkipRef.current, {
+          grep: queryRef.current || undefined,
+        })
           .then((more) => {
             nextSkipRef.current += more.length;
             hasMoreRef.current = more.length === PAGE_SIZE;
@@ -186,6 +209,25 @@ export function useCommitHistory(): HistoryModel {
       }
     },
     [selectCommit],
+  );
+
+  const setQuery = useCallback(
+    (next: string) => {
+      if (next === queryRef.current) return;
+      queryRef.current = next;
+      setQueryState(next);
+      // Start over: drop every loaded page so refresh() doesn't merge results
+      // from the previous search back in.
+      commitsRef.current = [];
+      hasMoreRef.current = true;
+      nextSkipRef.current = 0;
+      selectedShaRef.current = null;
+      setCommits([]);
+      setSelectedSha(null);
+      setLoading(true);
+      void refresh();
+    },
+    [refresh],
   );
 
   const selectFile = useCallback((path: string) => {
@@ -220,6 +262,8 @@ export function useCommitHistory(): HistoryModel {
     moveFile,
     diff,
     diffLoading,
+    query,
+    setQuery,
     refresh,
   };
 }
