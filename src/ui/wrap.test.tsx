@@ -24,25 +24,28 @@ beforeAll(async () => {
 
 afterAll(() => rmSync(repo, { recursive: true, force: true }));
 
-test("`w` wraps long diff lines instead of clipping them", async () => {
+test("`w` toggles long diff lines between wrapped and clipped", async () => {
   const t = await testRender(<App />, { width: 80, height: 24 });
   await t.waitForFrame((f) => f.includes("wrapme"));
 
   const countOccurrences = (s: string, sub: string) => s.split(sub).length - 1;
 
-  // Unwrapped: the long line is clipped to the pane width -> "wrapme" appears
-  // only a handful of times on its single row.
-  const clipped = countOccurrences(t.captureCharFrame(), "wrapme");
-
-  t.mockInput.pressKey("w");
-  await t.waitForFrame((f) => countOccurrences(f, "wrapme") > clipped);
+  // Wrapping is on by default: the long line flows onto extra rows, so every
+  // "wrapme" in it is visible.
+  await t.waitForFrame((f) => countOccurrences(f, "wrapme") >= 30);
   const wrapped = countOccurrences(t.captureCharFrame(), "wrapme");
 
-  expect(wrapped).toBeGreaterThan(clipped);
-
-  // Toggle back off.
+  // `w` turns it off -> the line is clipped to the pane width, leaving only
+  // the handful of "wrapme"s that fit on its single row.
   t.mockInput.pressKey("w");
-  await t.waitForFrame((f) => countOccurrences(f, "wrapme") <= clipped);
+  await t.waitForFrame((f) => countOccurrences(f, "wrapme") < wrapped);
+  const clipped = countOccurrences(t.captureCharFrame(), "wrapme");
+
+  expect(clipped).toBeLessThan(wrapped);
+
+  // Toggle back on.
+  t.mockInput.pressKey("w");
+  await t.waitForFrame((f) => countOccurrences(f, "wrapme") >= wrapped);
 
   t.renderer.destroy();
 });
