@@ -39,4 +39,16 @@ case "$os" in
   linux) native_lib="libopentui.so" ;;
 esac
 cp "node_modules/@opentui/core-${os}-${arch}/${native_lib}" "${asset_dir}/@opentui/core-${os}-${arch}/${native_lib}"
+
+# The Copilot SDK runs a runtime binary from its per-platform package, which a
+# compiled executable can't resolve from its virtual filesystem either. Copy
+# the whole package (the runtime wrapper expects its sibling directories) for
+# src/copilot/generate.ts to find. Skipped quietly if it isn't installed —
+# commit-message generation then just reports the runtime as missing.
+copilot_pkg="node_modules/@github/copilot-sdk-${os}-${arch}"
+if [ -d "$copilot_pkg" ]; then
+  mkdir -p "${asset_dir}/@github"
+  rm -rf "${asset_dir}/@github/copilot-sdk-${os}-${arch}"
+  cp -R "$copilot_pkg" "${asset_dir}/@github/"
+fi
 echo "done"

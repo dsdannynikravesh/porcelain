@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { CopilotClient, RuntimeConnection } from "@github/copilot-sdk";
 import { parseGeneratedCommitMessage } from "./parse.js";
@@ -20,24 +19,33 @@ function defaultModel(): string | undefined {
 }
 
 /**
- * Locates the Copilot CLI runtime binary that the SDK speaks JSON-RPC to
- * over stdio. `gh copilot` already downloads and manages this exact binary
- * (and the login state that comes with it), so reusing its path means
- * porcelain rides the same install instead of needing its own.
- * `COPILOT_CLI_PATH` (the SDK's own env var) overrides it for anyone running
- * a different install.
+ * The SDK ships the Copilot runtime itself, in the optional
+ * `@github/copilot-sdk-<platform>` package, and by default unpacks and runs
+ * that — no `gh copilot` install needed. That package can't be reached from
+ * inside a `bun build --compile` binary's virtual filesystem, though, so
+ * scripts/build.sh copies it into the `.assets` directory next to the
+ * executable (same as OpenTUI's worker); point the SDK at that copy when it's
+ * there. `COPILOT_CLI_PATH` (read by the SDK itself) still overrides both.
  */
-function resolveCopilotCliPath(): string | undefined {
-  if (process.env.COPILOT_CLI_PATH) return process.env.COPILOT_CLI_PATH;
-  const ghManaged = join(
-    homedir(),
-    ".local",
-    "share",
-    "gh",
-    "copilot",
-    process.platform === "win32" ? "copilot.exe" : "copilot",
+function compiledRuntimePath(): string | undefined {
+  if (process.env.COPILOT_CLI_PATH) return undefined;
+  const platform = `${process.platform}-${process.arch}`;
+  const wrapper = process.platform === "win32" ? "copilot-runtime.exe" : "copilot-runtime";
+  let execPath: string;
+  try {
+    execPath = realpathSync(process.execPath);
+  } catch {
+    return undefined;
+  }
+  const candidate = join(
+    `${execPath}.assets`,
+    "@github",
+    `copilot-sdk-${platform}`,
+    "prebuilds",
+    platform,
+    wrapper,
   );
-  return existsSync(ghManaged) ? ghManaged : undefined;
+  return existsSync(candidate) ? candidate : undefined;
 }
 
 function describeError(err: unknown): string {
@@ -50,7 +58,7 @@ function describeError(err: unknown): string {
 
 /**
  * Generates a commit title/description from a diff via the Copilot SDK — a
- * single JSON-RPC session over stdio to the `copilot` runtime binary. This
+ * single JSON-RPC session over stdio to the SDK's bundled Copilot runtime. This
  * is the same transport GitHub Desktop's own commit-message feature uses
  * (`@github/copilot-sdk`, `CopilotClient.createSession`), instead of
  * shelling out to `gh copilot`'s non-interactive prompt mode once per call.
@@ -63,7 +71,7 @@ function describeError(err: unknown): string {
  * disabling the tool-permission subsystem entirely is both safer and
  * removes a chunk of per-call setup work.
  *
- * Never throws — every failure mode (runtime not found, not logged in, a
+ * Never throws — every failure mode (runtime missing, not logged in, a
  * timeout, a malformed response) comes back as a normal `{ok: false}`
  * outcome for the caller to toast.
  */
@@ -71,16 +79,8 @@ export async function generateCommitMessage(
   diff: string,
   opts: { cwd?: string } = {},
 ): Promise<GenerateCommitMessageOutcome> {
-  const cliPath = resolveCopilotCliPath();
-  if (!cliPath) {
-    return {
-      ok: false,
-      message: "Copilot CLI not found — run `gh copilot` once to install it.",
-    };
-  }
-
   const client = new CopilotClient({
-    connection: RuntimeConnection.forStdio({ path: cliPath }),
+    connection: RuntimeConnection.forStdio({ path: compiledRuntimePath() }),
     workingDirectory: opts.cwd,
   });
 
